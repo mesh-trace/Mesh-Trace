@@ -1,0 +1,135 @@
+{
+  "crash_alert": {
+    "type": "crash_alert",
+    "node_id": "node1",
+    "timestamp": "2024-01-15T14:30:45.123456",
+    "data": {
+      "crash_data": {
+        "timestamp": "2024-01-15T14:30:45.123456",
+        "impact": 12.5,
+        "accelerometer": {
+          "x": 15.2,
+          "y": -8.3,
+          "z": 22.1,
+          "magnitude": 27.8
+        },
+        "gyroscope": {
+          "x": 450.5,
+          "y": -320.2,
+          "z": 680.3,
+          "magnitude": 856.7
+        },
+        "temperature": 35.5,
+        "gps": {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "altitude": 15.5,
+          "speed": 0.0,
+          "course": null,
+          "timestamp": 1705324245.123,
+          "satellites": 8,
+          "fix_quality": 1
+        },
+        "node_id": "node1"
+      },
+      "pre_crash_buffer": [
+        {
+          "timestamp": "2024-01-15T14:30:40.123456",
+          "accelerometer": {
+            "x": 0.1,
+            "y": -0.2,
+            "z": 9.8,
+            "magnitude": 9.8
+          },
+          "gyroscope": {
+            "x": 2.5,
+            "y": -1.3,
+            "z": 0.8,
+            "magnitude": 3.0
+          }
+        }
+      ],
+      "timestamp": "2024-01-15T14:30:45.123456",
+      "confidence": 0.92,
+      "node_id": "node1"
+    },
+    "hash": "a1b2c3d4e5f6...",
+    "encrypted": false
+  },
+  "health_report": {
+    "type": "health_report",
+    "node_id": "node1",
+    "timestamp": "2024-01-15T14:30:00.000000",
+    "health_data": {
+      "timestamp": 1705324200.0,
+      "sensors": {
+        "impact": {
+          "name": "impact",
+          "status": "healthy",
+          "last_read": 0.0,
+          "error_count": 0,
+          "data_quality": "good",
+          "timestamp": 1705324200.0
+        },
+        "mpu6050": {
+          "name": "mpu6050",
+          "status": "healthy",
+          "last_read": {
+            "accel": {
+              "x": 0.1,
+              "y": -0.2,
+              "z": 9.8,
+              "magnitude": 9.8
+            },
+            "gyro": {
+              "x": 2.5,
+              "y": -1.3,
+              "z": 0.8,
+              "magnitude": 3.0
+            }
+          },
+          "error_count": 0,
+          "data_quality": "good",
+          "timestamp": 1705324200.0
+        },
+        "temperature": {
+          "name": "temperature",
+          "status": "healthy",
+          "last_read": 35.5,
+          "error_count": 0,
+          "data_quality": "good",
+          "timestamp": 1705324200.0
+        },
+        "gps": {
+          "name": "gps",
+          "status": "healthy",
+          "last_read": {
+            "latitude": 37.7749,
+            "longitude": -122.4194,
+            "altitude": 15.5,
+            "satellites": 8,
+            "fix_quality": 1
+          },
+          "error_count": 0,
+          "data_quality": "good",
+          "timestamp": 1705324200.0
+        }
+      },
+      "overall_status": "healthy",
+      "warnings": [],
+      "errors": []
+    }
+  },
+  "description": {
+    "crash_alert": "Message format for crash detection alerts sent via MQTT/LoRa",
+    "health_report": "Message format for periodic sensor health reports",
+    "fields": {
+      "type": "Message type: 'crash_alert' or 'health_report'",
+      "node_id": "Unique identifier for the crash detection node",
+      "timestamp": "ISO 8601 formatted timestamp",
+      "data": "Main payload data (varies by message type)",
+      "hash": "SHA-256 hash of the data for integrity verification",
+      "encrypted": "Boolean indicating if data is encrypted"
+    }
+  }
+}
