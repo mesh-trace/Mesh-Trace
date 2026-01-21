@@ -7,15 +7,15 @@ Raspberry Pi Zero WH settings and thresholds
 RASPBERRY_PI_MODEL = "Zero WH"
 
 # Sensor Configuration
-IMPACT_SENSOR_PIN = 18
+IMPACT_SENSOR_PINS = [18, 23, 24, 25]
 MPU6050_I2C_ADDRESS = 0x68
 MPU6050_I2C_BUS = 1
-TEMPERATURE_SENSOR_PIN = 4  # DS18B20 GPIO pin
+TEMPERATURE_SENSOR_PIN = 4  # DHT22 GPIO pin
 GPS_SERIAL_PORT = "/dev/ttyAMA0"
 GPS_BAUDRATE = 9600
 
 # Crash Detection Thresholds
-IMPACT_THRESHOLD = 5.0  # G-force threshold for impact detection
+IMPACT_THRESHOLD = 15.0  # G-force threshold for impact detection
 ACCELERATION_THRESHOLD = 9.8  # m/s² (1G baseline)
 ROTATION_THRESHOLD = 500  # deg/s for angular velocity
 CRASH_CONFIDENCE_THRESHOLD = 0.85  # AI classifier confidence
