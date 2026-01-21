@@ -4,7 +4,7 @@ Provides acceleration and rotation data for crash detection
 """
 
 try:
-    import smbus
+    import smbus  # pyright: ignore[reportMissingImports]
     I2C_AVAILABLE = True
 except ImportError:
     I2C_AVAILABLE = False
