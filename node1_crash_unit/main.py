@@ -28,7 +28,7 @@ class CrashDetectionUnit:
         print("Initializing Crash Detection Unit...")
         
         # Initialize sensors
-        self.impact_sensor = ImpactSensor(IMPACT_SENSOR_PIN)
+        self.impact_sensor = ImpactSensor(IMPACT_SENSOR_PINS)  # pyright: ignore[reportUndefinedVariable]
         self.mpu6050 = MPU6050(MPU6050_I2C_ADDRESS, MPU6050_I2C_BUS)
         self.temperature_sensor = TemperatureSensor(TEMPERATURE_SENSOR_PIN)
         self.gps_sensor = GPSSensor(GPS_SERIAL_PORT, GPS_BAUDRATE)
