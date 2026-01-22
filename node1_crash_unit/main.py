@@ -14,11 +14,11 @@ from sensors.impact_sensor import ImpactSensor
 from sensors.mpu6050 import MPU6050
 from sensors.temperature import TemperatureSensor
 from sensors.gps import GPSSensor
-from ai.crash_classifier import CrashClassifier
-from ai.sensor_health import SensorHealthMonitor
-from lora.lora_tx import LoRaTransmitter
-from security.encryption import encrypt_data
-from security.hashing import hash_data
+#from ai.crash_classifier import CrashClassifier
+#from ai.sensor_health import SensorHealthMonitor
+#from lora.lora_tx import LoRaTransmitter
+#from security.encryption import encrypt_data
+#from security.hashing import hash_data
 from storage.blackbox_logger import BlackboxLogger
 
 
@@ -34,20 +34,20 @@ class CrashDetectionUnit:
         self.gps_sensor = GPSSensor(GPS_SERIAL_PORT, GPS_BAUDRATE)
         
         # Initialize AI components
-        self.crash_classifier = CrashClassifier()
-        self.sensor_health = SensorHealthMonitor()
+        #self.crash_classifier = CrashClassifier()
+        #self.sensor_health = SensorHealthMonitor()
         
         # Initialize communication
-        self.lora_tx = LoRaTransmitter(
-            frequency=LORA_FREQUENCY,
-            spreading_factor=LORA_SPREADING_FACTOR,
-            bandwidth=LORA_BANDWIDTH,
-            coding_rate=LORA_CODING_RATE,
-            power=LORA_POWER,
-            cs_pin=LORA_CS_PIN,
-            reset_pin=LORA_RESET_PIN,
-            dio0_pin=LORA_DIO0_PIN
-        )
+        #self.lora_tx = LoRaTransmitter(
+            #frequency=LORA_FREQUENCY,
+            #spreading_factor=LORA_SPREADING_FACTOR,
+            #bandwidth=LORA_BANDWIDTH,
+            #coding_rate=LORA_CODING_RATE,
+            #power=LORA_POWER,
+            #cs_pin=LORA_CS_PIN,
+            #reset_pin=LORA_RESET_PIN,
+            #dio0_pin=LORA_DIO0_PIN
+        #)
         
         # Initialize storage
         self.blackbox = BlackboxLogger(BLACKBOX_LOG_PATH)
@@ -98,12 +98,13 @@ class CrashDetectionUnit:
         if sensor_data['impact'] and sensor_data['impact'] > IMPACT_THRESHOLD:
             confidence = 0.95  # High confidence for direct impact
             return True, confidence
+            return False, 0.0
         
         # Use AI classifier for complex crash detection
-        features = self.crash_classifier.extract_features(sensor_data)
-        is_crash, confidence = self.crash_classifier.predict(features)
+        #features = self.crash_classifier.extract_features(sensor_data)
+        #is_crash, confidence = self.crash_classifier.predict(features)
         
-        return is_crash and confidence > CRASH_CONFIDENCE_THRESHOLD, confidence
+        #return is_crash and confidence > CRASH_CONFIDENCE_THRESHOLD, confidence
     
     def handle_crash(self, sensor_data, confidence):
         """Handle crash detection - log, transmit, and alert"""
@@ -122,44 +123,44 @@ class CrashDetectionUnit:
         self.blackbox.log_crash(crash_package)
         
         # Encrypt and hash data
-        if ENABLE_ENCRYPTION:
-            encrypted_data = encrypt_data(str(crash_package))
-            data_hash = hash_data(str(crash_package))
-        else:
-            encrypted_data = str(crash_package)
-            data_hash = hash_data(str(crash_package))
+        #if ENABLE_ENCRYPTION:
+            #encrypted_data = encrypt_data(str(crash_package))
+            #data_hash = hash_data(str(crash_package))
+        #else:
+            #encrypted_data = str(crash_package)
+            #data_hash = hash_data(str(crash_package))
         
         # Transmit via LoRa
-        lora_payload = {
-            'type': 'crash_alert',
-            'data': encrypted_data,
-            'hash': data_hash,
-            'node_id': NODE_ID,
-            'timestamp': crash_package['timestamp']
-        }
+        #lora_payload = {
+            #'type': 'crash_alert',
+            #'data': encrypted_data,
+            #'hash': data_hash,
+            #'node_id': NODE_ID,
+            #'timestamp': crash_package['timestamp']
+        #}
         
-        self.lora_tx.send(str(lora_payload))
-        print("Crash alert transmitted via LoRa")
+        #self.lora_tx.send(str(lora_payload))
+        #print("Crash alert transmitted via LoRa")
         
         # TODO: Trigger AWS IoT upload if connectivity available
     
-    def health_check(self):
+    #def health_check(self):
         """Perform periodic health checks and reports"""
-        current_time = time.time()
+       # current_time = time.time()
         
-        if current_time - self.last_health_report >= CLOUD_REPORT_INTERVAL:
-            health_status = self.sensor_health.check_all_sensors(
-                self.impact_sensor,
-                self.mpu6050,
-                self.temperature_sensor,
-                self.gps_sensor
-            )
+        #if current_time - self.last_health_report >= CLOUD_REPORT_INTERVAL:
+            #health_status = self.sensor_health.check_all_sensors(
+                #self.impact_sensor,
+                #self.mpu6050,
+                #self.temperature_sensor,
+                #self.gps_sensor
+            #)
             
             # Log health status
-            if DEBUG_MODE:
-                print(f"Health Status: {health_status}")
+            #if DEBUG_MODE:
+                #print(f"Health Status: {health_status}")
             
-            self.last_health_report = current_time
+            #self.last_health_report = current_time
     
     def cleanup(self):
         """Cleanup resources on shutdown"""
@@ -168,7 +169,7 @@ class CrashDetectionUnit:
         self.mpu6050.cleanup()
         self.temperature_sensor.cleanup()
         self.gps_sensor.cleanup()
-        self.lora_tx.cleanup()
+        #self.lora_tx.cleanup()
         self.blackbox.close()
     
     def run(self):
@@ -185,6 +186,9 @@ class CrashDetectionUnit:
             if sensor_data:
                 # Add to circular buffer
                 self.data_buffer.append(sensor_data)
+
+                self.blackbox.log(sensor_data, log_type="sensor")
+                print(sensor_data)
                 
                 # Check for crash
                 is_crash, confidence = self.detect_crash(sensor_data)
@@ -193,13 +197,15 @@ class CrashDetectionUnit:
                     self.handle_crash(sensor_data, confidence)
                 
                 # Periodic health checks
-                self.health_check()
+               # self.health_check()
             
             # Maintain sample rate
             elapsed = time.time() - loop_start
             sleep_time = max(0, sample_interval - elapsed)
             if sleep_time > 0:
                 time.sleep(sleep_time)
+            
+            
 
 
 def main():
