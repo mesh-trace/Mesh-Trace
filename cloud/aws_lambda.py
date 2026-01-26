@@ -4,20 +4,24 @@ Receives MQTT messages from IoT Core and processes crash events
 """
 
 import json
+import os
 import boto3
 from datetime import datetime
 from typing import Dict, Any
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 sns_client = boto3.client('sns')
 
-# Configuration
-S3_BUCKET = 'mesh-trace-crash-data'
-DYNAMODB_TABLE = 'mesh-trace-crashes'
-SNS_TOPIC_ARN = 'arn:aws:sns:region:account:mesh-trace-alerts'
+# Configuration from environment variables
+S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-data')
+DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'mesh-trace-crashes')
+SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN', 'arn:aws:sns:region:account:mesh-trace-alerts')
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
