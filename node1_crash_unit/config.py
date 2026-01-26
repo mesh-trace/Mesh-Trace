@@ -5,7 +5,7 @@ Loads configuration from environment variables (.env file)
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 
 # Load environment variables from .env file
 load_dotenv()
@@ -68,7 +68,7 @@ HASH_ALGORITHM = os.getenv('HASH_ALGORITHM', 'sha256')
 ENABLE_ENCRYPTION = get_bool('ENABLE_ENCRYPTION', True)
 
 # Storage Configuration
-BLACKBOX_LOG_PATH = os.getenv('BLACKBOX_LOG_PATH', '/var/log/mesh-trace/')
+BLACKBOX_LOG_PATH = os.getenv('BLACKBOX_LOG_PATH', './logs/')
 BLACKBOX_MAX_SIZE_MB = int(os.getenv('BLACKBOX_MAX_SIZE_MB', '50'))
 BLACKBOX_ROTATION_COUNT = int(os.getenv('BLACKBOX_ROTATION_COUNT', '5'))
 
