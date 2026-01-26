@@ -88,18 +88,38 @@ class CrashDetectionUnit:
         except Exception as e:
             print(f"Error reading sensors: {e}")
             return None
-    
+
     def detect_crash(self, sensor_data):
-        """Use AI classifier to detect crash events"""
+        """Detect crash event and return (is_crash, confidence) ALWAYS"""
         if not sensor_data:
             return False, 0.0
-        
-        # Check for immediate impact trigger
-        if sensor_data['impact'] and sensor_data['impact'] > IMPACT_THRESHOLD:
-            confidence = 0.95  # High confidence for direct impact
-            return True, confidence
+
+        impact = sensor_data.get("impact")
+        accel = sensor_data.get("accelerometer", {})
+
+        # Default values
+        is_crash = False
+        confidence = 0.0
+
+        # Impact sensor trigger
+        if impact is not None and impact > IMPACT_THRESHOLD:
+            return True, 0.95
+
+        # Accelerometer fallback (magnitude)
+        ax = accel.get("x", 0.0)
+        ay = accel.get("y", 0.0)
+        az = accel.get("z", 0.0)
+
+        magnitude = (ax**2 + ay**2 + az**2) ** 0.5
+
+        if magnitude > 3.0:  # safe default threshold
+            return True, 0.7
+
+        try:
             return False, 0.0
-        
+        except Exception as e:
+            print(f"Crash detection error: {e}")
+            return False, 0.0
         # Use AI classifier for complex crash detection
         #features = self.crash_classifier.extract_features(sensor_data)
         #is_crash, confidence = self.crash_classifier.predict(features)
