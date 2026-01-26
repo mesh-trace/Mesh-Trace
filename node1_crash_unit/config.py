@@ -5,7 +5,7 @@ Loads configuration from environment variables (.env file)
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 
 # Load environment variables from .env file
 load_dotenv()
