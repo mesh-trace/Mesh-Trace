@@ -93,17 +93,7 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         node_id = payload.get('node_id', 'unknown')
         timestamp = payload.get('timestamp', datetime.now().isoformat())
         
-        # Verify data integrity (check hash)
-        if 'hash' in payload:
-            # TODO: Implement hash verification
-            pass
-        
-        # Decrypt data if encrypted
-        if payload.get('encrypted', False):
-            # TODO: Implement decryption
-            pass
-        
-        # Store in S3
+        # Store in S3 (no hash/encryption; sensor testing + cloud hopping only)
         s3_key = f"crashes/{node_id}/{timestamp}.json"
         s3_client.put_object(
             Bucket=S3_BUCKET,
@@ -130,12 +120,13 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         
         # Send alert notification
+        inner = crash_data.get('crash_data', {})
         sns_message = {
             'alert_type': 'crash_detected',
             'node_id': node_id,
             'timestamp': timestamp,
             'confidence': crash_data.get('confidence', 0.0),
-            'location': crash_data.get('gps', {}),
+            'location': inner.get('gps', {}),
             's3_location': f"s3://{S3_BUCKET}/{s3_key}"
         }
         

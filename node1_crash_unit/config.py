@@ -41,11 +41,9 @@ TEMPERATURE_SENSOR_PIN = int(os.getenv('TEMPERATURE_SENSOR_PIN', '4'))
 GPS_SERIAL_PORT = os.getenv('GPS_SERIAL_PORT', '/dev/ttyAMA0')
 GPS_BAUDRATE = int(os.getenv('GPS_BAUDRATE', '9600'))
 
-# Crash Detection Thresholds
+# Crash Detection Thresholds (threshold-based, no AI)
 IMPACT_THRESHOLD = float(os.getenv('IMPACT_THRESHOLD', '15.0'))
 ACCELERATION_THRESHOLD = float(os.getenv('ACCELERATION_THRESHOLD', '9.8'))
-ROTATION_THRESHOLD = int(os.getenv('ROTATION_THRESHOLD', '500'))
-CRASH_CONFIDENCE_THRESHOLD = float(os.getenv('CRASH_CONFIDENCE_THRESHOLD', '0.85'))
 
 # Sampling Configuration
 SAMPLE_RATE = int(os.getenv('SAMPLE_RATE', '100'))
@@ -62,11 +60,6 @@ LORA_CS_PIN = int(os.getenv('LORA_CS_PIN', '8'))
 LORA_RESET_PIN = int(os.getenv('LORA_RESET_PIN', '25'))
 LORA_DIO0_PIN = int(os.getenv('LORA_DIO0_PIN', '24'))
 
-# Security Configuration
-ENCRYPTION_KEY_SIZE = int(os.getenv('ENCRYPTION_KEY_SIZE', '32'))
-HASH_ALGORITHM = os.getenv('HASH_ALGORITHM', 'sha256')
-ENABLE_ENCRYPTION = get_bool('ENABLE_ENCRYPTION', True)
-
 # Storage Configuration
 BLACKBOX_LOG_PATH = os.getenv('BLACKBOX_LOG_PATH', '/var/log/mesh-trace/')
 BLACKBOX_MAX_SIZE_MB = int(os.getenv('BLACKBOX_MAX_SIZE_MB', '50'))
@@ -76,7 +69,6 @@ BLACKBOX_ROTATION_COUNT = int(os.getenv('BLACKBOX_ROTATION_COUNT', '5'))
 AWS_IOT_ENDPOINT = os.getenv('AWS_IOT_ENDPOINT', 'your-iot-endpoint.iot.region.amazonaws.com')
 MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'mesh-trace/node1/crash')
 MQTT_QOS = int(os.getenv('MQTT_QOS', '1'))
-CLOUD_REPORT_INTERVAL = int(os.getenv('CLOUD_REPORT_INTERVAL', '300'))
 
 # Network Configuration
 MESH_NETWORK_ID = os.getenv('MESH_NETWORK_ID', 'mesh-trace-001')
