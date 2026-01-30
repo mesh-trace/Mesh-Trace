@@ -1,16 +1,3 @@
-"""
-Main crash detection loop for Node 1 (Raspberry Pi Zero WH)
-
-Flow:
-1. Read sensors continuously
-2. Detect crash
-3. Always log locally (blackbox)
-4. IF internet available:
-       → Send data directly to AWS IoT (MQTT)
-   ELSE:
-       → Send data via LoRa to relay node (Node-2)
-"""
-
 import json
 import time
 import signal
@@ -57,7 +44,7 @@ class CrashDetectionUnit:
 
         # Sensors
         self.impact_sensor = ImpactSensor(IMPACT_SENSOR_PINS)
-        self.mpu6050 = MPU6050(MPU6050_I2C_ADDRESS, MPU6050_I2C_BUS)
+        self.mpu6050 = MPU6050(MPU6050_I2C_BUS, MPU6050_I2C_ADDRESS)
         self.temperature_sensor = TemperatureSensor(TEMPERATURE_SENSOR_PIN)
         self.gps_sensor = GPSSensor(GPS_SERIAL_PORT, GPS_BAUDRATE)
 
