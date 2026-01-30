@@ -33,7 +33,7 @@ def get_bool(env_var: str, default: bool) -> bool:
 RASPBERRY_PI_MODEL = os.getenv('RASPBERRY_PI_MODEL', 'Zero WH')
 
 # Sensor Configuration
-IMPACT_SENSOR_PINS = get_int_list('IMPACT_SENSOR_PINS', [18, 23, 24, 25])
+IMPACT_SENSOR_PINS = get_int_list('IMPACT_SENSOR_PINS', [22, 23, 24, 25])
 # MPU6050_I2C_ADDRESS: 104 decimal = 0x68 hex
 MPU6050_I2C_ADDRESS = int(os.getenv('MPU6050_I2C_ADDRESS', '104'))
 MPU6050_I2C_BUS = int(os.getenv('MPU6050_I2C_BUS', '1'))
