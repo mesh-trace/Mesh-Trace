@@ -31,3 +31,18 @@ class MPU6050:
             "y": ay,
             "z": az
         }
+    def read_gyroscope(self):
+        """
+        Gyroscope not used for crash detection currently.  Return zeros to keep system stable.
+        """
+        return {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+        }
+
+    def cleanup(self):
+        """
+        Placeholder cleanup for compatibility.
+        """
+        pass
