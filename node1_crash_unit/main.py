@@ -124,16 +124,16 @@ class CrashDetectionUnit:
         if not sensor_data:
             return False, 0.0
 
-	accel = sensor_data.get("accelerometer")
+        accel = sensor_data.get("accelerometer")
 
-	if accel:
-	    ax, ay, az = accel["x"], accel["y"], accel["z"]
-	    accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
+        if accel:
+            ax, ay, az = accel.get("x", 0.0), accel.get("y", 0.0), accel.get("z", 0.0)
+            accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
 
-	    print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
+            print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
-	    if accel_mag > IMPACT_THRESHOLD:
-	        return True, 0.95
+            if accel_mag > IMPACT_THRESHOLD:
+                return True, 0.95
 
 
         return False, 0.0
