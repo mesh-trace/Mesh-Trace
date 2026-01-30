@@ -8,7 +8,7 @@ import os
 import boto3
 from datetime import datetime
 from typing import Dict, Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 
 # Load environment variables from .env file
 load_dotenv()
@@ -19,9 +19,9 @@ dynamodb = boto3.resource('dynamodb')
 sns_client = boto3.client('sns')
 
 # Configuration from environment variables
-S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-data')
-DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'mesh-trace-crashes')
-SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN', 'arn:aws:sns:region:account:mesh-trace-alerts')
+S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-archive-et8')
+DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'MeshTraceCrashTable')
+SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN')
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
