@@ -34,7 +34,7 @@ class ImpactSensor:
     """
     
     def __init__(self, pins: Optional[List[int]] = None, pin: Optional[int] = None,
-                 accel_threshold: float = 15.0,  # m/s² threshold for impact confirmation
+                 accel_threshold: float = 7.0,  # m/s² threshold for impact confirmation
                  correlation_window: float = 0.2,  # seconds (200ms window)
                  debounce_time: float = 0.05,  # seconds (50ms debounce)
                  cooldown_time: float = 1.0):  # seconds (1s cooldown between impacts)

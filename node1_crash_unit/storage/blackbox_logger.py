@@ -9,7 +9,7 @@ import gzip
 import time
 from datetime import datetime
 from pathlib import Path
-from config import BLACKBOX_LOG_PATH, BLACKBOX_MAX_SIZE_MB, BLACKBOX_ROTATION_COUNT
+from ..config import BLACKBOX_LOG_PATH, BLACKBOX_MAX_SIZE_MB, BLACKBOX_ROTATION_COUNT
 
 
 class BlackboxLogger:

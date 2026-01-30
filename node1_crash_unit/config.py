@@ -42,7 +42,7 @@ GPS_SERIAL_PORT = os.getenv('GPS_SERIAL_PORT', '/dev/ttyAMA0')
 GPS_BAUDRATE = int(os.getenv('GPS_BAUDRATE', '9600'))
 
 # Crash Detection Thresholds (threshold-based, no AI)
-IMPACT_THRESHOLD = float(os.getenv('IMPACT_THRESHOLD', '15.0'))
+IMPACT_THRESHOLD = float(os.getenv('IMPACT_THRESHOLD', '10.0'))
 ACCELERATION_THRESHOLD = float(os.getenv('ACCELERATION_THRESHOLD', '9.8'))
 
 # Sampling Configuration
