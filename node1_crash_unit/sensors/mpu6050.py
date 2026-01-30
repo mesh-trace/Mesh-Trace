@@ -1,4 +1,4 @@
-import smbus  # pyright: ignore[reportMissingImports]
+import smbus2 as smbus 
 import time
 
 class MPU6050:
