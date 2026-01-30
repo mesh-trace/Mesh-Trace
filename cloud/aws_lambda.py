@@ -8,7 +8,7 @@ import os
 import boto3
 from datetime import datetime
 from typing import Dict, Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 
 # Load environment variables from .env file
 load_dotenv()
@@ -19,9 +19,9 @@ dynamodb = boto3.resource('dynamodb')
 sns_client = boto3.client('sns')
 
 # Configuration from environment variables
-S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-data')
-DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'mesh-trace-crashes')
-SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN', 'arn:aws:sns:region:account:mesh-trace-alerts')
+S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-archive-et8')
+DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'MeshTraceCrashTable')
+SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN')
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -93,17 +93,7 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         node_id = payload.get('node_id', 'unknown')
         timestamp = payload.get('timestamp', datetime.now().isoformat())
         
-        # Verify data integrity (check hash)
-        if 'hash' in payload:
-            # TODO: Implement hash verification
-            pass
-        
-        # Decrypt data if encrypted
-        if payload.get('encrypted', False):
-            # TODO: Implement decryption
-            pass
-        
-        # Store in S3
+        # Store in S3 (no hash/encryption; sensor testing + cloud hopping only)
         s3_key = f"crashes/{node_id}/{timestamp}.json"
         s3_client.put_object(
             Bucket=S3_BUCKET,
@@ -130,12 +120,13 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         
         # Send alert notification
+        inner = crash_data.get('crash_data', {})
         sns_message = {
             'alert_type': 'crash_detected',
             'node_id': node_id,
             'timestamp': timestamp,
             'confidence': crash_data.get('confidence', 0.0),
-            'location': crash_data.get('gps', {}),
+            'location': inner.get('gps', {}),
             's3_location': f"s3://{S3_BUCKET}/{s3_key}"
         }
         
