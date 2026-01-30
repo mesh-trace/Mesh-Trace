@@ -103,11 +103,13 @@ class MPU6050:
         accel_y = self._read_word_2c(self.ACCEL_XOUT_H + 2)
         accel_z = self._read_word_2c(self.ACCEL_XOUT_H + 4)
         
-        # Convert to m/s² (8g range: 16384 LSB/g)
-        accel_scale = 16384.0
+        # Convert to m/s² (2g range: 4096.0 LSB/g)
+        accel_scale = 4096.0
         accel_x = (accel_x / accel_scale) * 9.80665
         accel_y = (accel_y / accel_scale) * 9.80665
         accel_z = (accel_z / accel_scale) * 9.80665
+
+        print(f"[MPU DEBUG] raw accel (m/s²): x={accel_x:.2f}, y={accel_y:.2f}, z={accel_z:.2f}")
         
         return {
             'x': round(accel_x, 3),
