@@ -82,3 +82,6 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 AWS_CA_CERT = os.getenv('AWS_CA_CERT')
 AWS_DEVICE_CERT = os.getenv('AWS_DEVICE_CERT')
 AWS_PRIVATE_KEY = os.getenv('AWS_PRIVATE_KEY')
+
+if not AWS_CA_CERT or not AWS_DEVICE_CERT or not AWS_PRIVATE_KEY:
+    raise EnvironmentError("AWS IoT certificate paths not set")

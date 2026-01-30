@@ -1,6 +1,8 @@
 import json
+import time
 import paho.mqtt.client as mqtt  
-from node1_crash_unit.config import AWS_IOT_ENDPOINT, MQTT_TOPIC, MQTT_QOS
+from ..config import AWS_IOT_ENDPOINT, MQTT_TOPIC, MQTT_QOS
+from ..config import AWS_CA_CERT, AWS_DEVICE_CERT, AWS_PRIVATE_KEY
 
 class AWSIoTPublisher:
     def __init__(self, certs):
@@ -19,3 +21,4 @@ class AWSIoTPublisher:
             json.dumps(payload),
             qos=MQTT_QOS
         )
+

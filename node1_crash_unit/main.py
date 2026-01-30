@@ -19,17 +19,16 @@ import socket
 from collections import deque
 from datetime import datetime
 
-from config import *
+from .config import *
 
-from sensors.impact_sensor import ImpactSensor
-from sensors.mpu6050 import MPU6050
-from sensors.temperature import TemperatureSensor
-from sensors.gps import GPSSensor
+from .sensors.impact_sensor import ImpactSensor
+from .sensors.mpu6050 import MPU6050
+from .sensors.temperature import TemperatureSensor
+from .sensors.gps import GPSSensor
 
-from lora.lora_tx import LoRaTransmitter
-from storage.blackbox_logger import BlackboxLogger
-
-from cloud.mqtt_client import AWSIoTPublisher   # you already planned this
+from .lora.lora_tx import LoRaTransmitter
+from .storage.blackbox_logger import BlackboxLogger
+from .cloud.mqtt_client import AWSIoTPublisher
 
 
 # -------------------------------------------------------------------
