@@ -118,57 +118,60 @@ class CrashDetectionUnit:
 
     # ----------------------------------------------------------------
     def detect_crash(self, sensor_data):
-        print("[TEST MODE] Forcing crash trigger")
-        return True, 0.99
-        """
-        Simple threshold-based crash detection (testing phase)
-        
         if not sensor_data:
             return False, 0.0
 
         accel = sensor_data.get("accelerometer")
+        if not accel:
+            return False, 0.0
 
-        if accel:
-            ax, ay, az = accel.get("x", 0.0), accel.get("y", 0.0), accel.get("z", 0.0)
-            accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
+        accel_mag = accel.get("magnitude", 0.0)
 
-            print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
+        print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
-            if accel_mag > IMPACT_THRESHOLD:
-                return True, 0.95 
+        if accel_mag >= IMPACT_THRESHOLD:
+            return True, 0.99
 
+        return False, 0.0
 
-        return False, 0.0   """
 
     # ----------------------------------------------------------------
     def handle_crash(self, sensor_data, confidence):
         print(f"\U0001F6A8 CRASH DETECTED | Confidence: {confidence:.2f}")
 
-        crash_package = {
-            "type": "crash_alert",
+        crash_event = {
+            "type": "crash_event",
             "node_id": NODE_ID,
             "timestamp": datetime.now().isoformat(),
             "confidence": confidence,
-            "crash_data": sensor_data,
-            "pre_crash_buffer": list(self.data_buffer)[
-                -PRE_CRASH_DURATION * SAMPLE_RATE:
-            ]
+
+            # FLAT sensor fields
+            "accelerometer": sensor_data.get("accelerometer"),
+            "gyroscope": sensor_data.get("gyroscope"),
+            "impact": sensor_data.get("impact"),
+            "temperature": sensor_data.get("temperature"),
+            "gps": sensor_data.get("gps"),
+
+            # Pre-crash data
+            "pre_crash_buffer": list(self.data_buffer)[-PRE_CRASH_DURATION * SAMPLE_RATE:]
         }
 
+
         # Always log locally
-        self.blackbox.log_crash(crash_package)
+        self.blackbox.log_crash(crash_event)
+
 
         # Decide path
         if is_internet_available():
             print("🌐 Internet available → sending directly to cloud")
 
-            self.cloud_client.publish(crash_package)
+            self.cloud_client.publish(crash_event)
             print("✅ Crash data sent to AWS IoT")
 
         else:
             print("📡 No internet → sending via LoRa relay")
 
-            self.lora_tx.send(json.dumps(crash_package))
+            self.lora_tx.send(json.dumps(crash_event))
             print("📤 Crash data transmitted via LoRa")
 
     # ----------------------------------------------------------------
