@@ -118,9 +118,11 @@ class CrashDetectionUnit:
 
     # ----------------------------------------------------------------
     def detect_crash(self, sensor_data):
+        print("[TEST MODE] Forcing crash trigger")
+        return True, 0.99
         """
         Simple threshold-based crash detection (testing phase)
-        """
+        
         if not sensor_data:
             return False, 0.0
 
@@ -133,14 +135,14 @@ class CrashDetectionUnit:
             print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
             if accel_mag > IMPACT_THRESHOLD:
-                return True, 0.95
+                return True, 0.95 
 
 
-        return False, 0.0
+        return False, 0.0   """
 
     # ----------------------------------------------------------------
     def handle_crash(self, sensor_data, confidence):
-        print(f"🚨 CRASH DETECTED | Confidence: {confidence:.2f}")
+        print(f"\U0001F6A8 CRASH DETECTED | Confidence: {confidence:.2f}")
 
         crash_package = {
             "type": "crash_alert",
