@@ -77,3 +77,8 @@ NODE_ID = os.getenv('NODE_ID', 'mesh-trace-node-001')
 # Debug Configuration
 DEBUG_MODE = get_bool('DEBUG_MODE', False)
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+# AWS IoT Certificates
+AWS_CA_CERT = os.getenv('AWS_CA_CERT')
+AWS_DEVICE_CERT = os.getenv('AWS_DEVICE_CERT')
+AWS_PRIVATE_KEY = os.getenv('AWS_PRIVATE_KEY')
