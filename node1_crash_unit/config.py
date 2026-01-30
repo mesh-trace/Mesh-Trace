@@ -66,13 +66,13 @@ BLACKBOX_MAX_SIZE_MB = int(os.getenv('BLACKBOX_MAX_SIZE_MB', '50'))
 BLACKBOX_ROTATION_COUNT = int(os.getenv('BLACKBOX_ROTATION_COUNT', '5'))
 
 # Cloud Configuration
-AWS_IOT_ENDPOINT = os.getenv('AWS_IOT_ENDPOINT', 'your-iot-endpoint.iot.region.amazonaws.com')
-MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'mesh-trace/node1/crash')
+AWS_IOT_ENDPOINT = os.getenv('AWS_IOT_ENDPOINT')
+MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'mesh-trace/crash-alerts/node-001')
 MQTT_QOS = int(os.getenv('MQTT_QOS', '1'))
 
 # Network Configuration
 MESH_NETWORK_ID = os.getenv('MESH_NETWORK_ID', 'mesh-trace-001')
-NODE_ID = os.getenv('NODE_ID', 'node1')
+NODE_ID = os.getenv('NODE_ID', 'mesh-trace-node-001')
 
 # Debug Configuration
 DEBUG_MODE = get_bool('DEBUG_MODE', False)
