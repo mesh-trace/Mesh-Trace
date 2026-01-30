@@ -125,7 +125,12 @@ class CrashDetectionUnit:
         if not accel:
             return False, 0.0
 
-        accel_mag = accel["magnitude"]
+        ax = accel["x"]
+        ay = accel["y"]
+        az = accel["z"]
+
+        accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
+
 
         print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
