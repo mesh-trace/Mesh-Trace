@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 
 from .config import (
@@ -31,7 +31,10 @@ class CrashDetectionUnit:
         self.temperature_sensor = TemperatureSensor()
         self.gps_sensor = GPSSensor()
 
-        # Cloud client (TLS certs injected correctly)
+        # Cache last valid GPS fix ✅
+        self.last_known_gps = None
+
+        # Cloud
         self.cloud_client = AWSIoTPublisher(
             certs={
                 "ca": AWS_CA_CERT,
@@ -40,10 +43,10 @@ class CrashDetectionUnit:
             }
         )
 
-        # Blackbox logger
+        # Blackbox
         self.blackbox = BlackboxLogger()
 
-        # Pre-crash circular buffer
+        # Pre-crash buffer
         self.data_buffer = deque(
             maxlen=PRE_CRASH_DURATION * SAMPLE_RATE
         )
@@ -51,7 +54,7 @@ class CrashDetectionUnit:
         print("Crash Detection Unit initialized successfully")
 
     # --------------------------------------------------
-    # READ ALL SENSORS
+    # SENSOR COLLECTION
     # --------------------------------------------------
     def read_all_sensors(self):
         accel = self.mpu6050.read_acceleration()
@@ -59,12 +62,11 @@ class CrashDetectionUnit:
         impact = self.impact_sensor.read()
         temperature = self.temperature_sensor.read()
 
-        # ✅ GPS — REAL DATA ONLY (NO DEFAULTS)
+        # ✅ GPS WITH CACHE (FIX)
         gps_raw = self.gps_sensor.get_position()
 
-        gps = None
         if gps_raw and gps_raw.get("fix_quality", 0) > 0:
-            gps = {
+            self.last_known_gps = {
                 "latitude": gps_raw.get("latitude"),
                 "longitude": gps_raw.get("longitude"),
                 "altitude": gps_raw.get("altitude"),
@@ -72,8 +74,15 @@ class CrashDetectionUnit:
                 "fix_quality": gps_raw.get("fix_quality"),
             }
 
+        gps = self.last_known_gps
+
+        if gps:
+            print(f"[DEBUG] Using GPS lat={gps['latitude']}, lon={gps['longitude']}")
+        else:
+            print("[DEBUG] GPS not fixed yet")
+
         sensor_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "node_id": NODE_ID,
             "impact": impact,
             "accelerometer": accel,
@@ -122,21 +131,19 @@ class CrashDetectionUnit:
             "node_id": NODE_ID,
             "confidence": confidence,
             "location": location,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "crash_data": sensor_data,
             "pre_crash_buffer": list(self.data_buffer)
         }
 
         print("[DEBUG] Crash payload GPS:", location)
 
-        # Send to AWS IoT
         try:
             self.cloud_client.publish(crash_payload)
             print("Crash alert sent to cloud")
         except Exception as e:
             print("Cloud publish failed:", e)
 
-        # Blackbox crash log
         self.blackbox.log_crash(crash_payload)
 
     # --------------------------------------------------
@@ -150,7 +157,6 @@ class CrashDetectionUnit:
             while True:
                 sensor_data = self.read_all_sensors()
 
-                # Continuous blackbox logging
                 self.blackbox.log(sensor_data, log_type="sensor")
                 self.data_buffer.append(sensor_data)
 
