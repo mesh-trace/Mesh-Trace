@@ -3,10 +3,10 @@ GPS sensor interface
 Provides location data for crash reporting
 """
 
-import serial
+import serial  # pyright: ignore[reportMissingModuleSource]
 import time
 try:
-    from pynmea2 import parse
+    from pynmea2 import parse  # pyright: ignore[reportMissingImports]
     NMEA_AVAILABLE = True
 except ImportError:
     NMEA_AVAILABLE = False
@@ -16,7 +16,7 @@ except ImportError:
 class GPSSensor:
     """Interface for GPS module"""
     
-    def __init__(self, port="/dev/ttyAMA0", baudrate=9600):
+    def __init__(self, port="/dev/ttyS0", baudrate=9600):
         """
         Initialize GPS sensor
         
