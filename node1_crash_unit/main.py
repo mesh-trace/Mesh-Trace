@@ -9,13 +9,13 @@ from .config import (
     IMPACT_THRESHOLD,
 )
 
-from sensors.mpu6050 import MPU6050
-from sensors.impact_sensor import ImpactSensor
-from sensors.temperature import TemperatureSensor
-from sensors.gps import GPSSensor
+from .sensors.mpu6050 import MPU6050
+from .sensors.impact_sensor import ImpactSensor
+from .sensors.temperature import TemperatureSensor
+from .sensors.gps import GPSSensor
 
-from storage.blackbox_logger import BlackboxLogger
-from cloud.mqtt_client import AWSIoTPublisher
+from .storage.blackbox_logger import BlackboxLogger
+from .cloud.mqtt_client import AWSIoTPublisher
 
 
 class CrashDetectionUnit:
