@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from collections import deque
 
-from config import (
+from .config import (
     NODE_ID,
     SAMPLE_RATE,
     PRE_CRASH_DURATION,
