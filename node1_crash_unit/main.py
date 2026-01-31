@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import datetime
 from collections import deque
@@ -8,6 +7,9 @@ from .config import (
     SAMPLE_RATE,
     PRE_CRASH_DURATION,
     IMPACT_THRESHOLD,
+    AWS_CA_CERT,
+    AWS_DEVICE_CERT,
+    AWS_PRIVATE_KEY
 )
 
 from .sensors.mpu6050 import MPU6050
@@ -29,37 +31,38 @@ class CrashDetectionUnit:
         self.temperature_sensor = TemperatureSensor()
         self.gps_sensor = GPSSensor()
 
-        # Cloud
+        # Cloud client (TLS certs injected correctly)
         self.cloud_client = AWSIoTPublisher(
-        certs={
-            "ca": os.getenv("AWS_CA_CERT"),
-            "cert": os.getenv("AWS_DEVICE_CERT"),
-            "key": os.getenv("AWS_PRIVATE_KEY")
-        }
-    )
+            certs={
+                "ca": AWS_CA_CERT,
+                "cert": AWS_DEVICE_CERT,
+                "key": AWS_PRIVATE_KEY
+            }
+        )
 
-        # Blackbox
+        # Blackbox logger
         self.blackbox = BlackboxLogger()
 
-        # Circular buffer for pre-crash data
+        # Pre-crash circular buffer
         self.data_buffer = deque(
             maxlen=PRE_CRASH_DURATION * SAMPLE_RATE
         )
 
         print("Crash Detection Unit initialized successfully")
 
-    # -----------------------------
-    # SENSOR COLLECTION
-    # -----------------------------
+    # --------------------------------------------------
+    # READ ALL SENSORS
+    # --------------------------------------------------
     def read_all_sensors(self):
         accel = self.mpu6050.read_acceleration()
         gyro = self.mpu6050.read_gyroscope()
         impact = self.impact_sensor.read()
         temperature = self.temperature_sensor.read()
 
-        # ---- GPS (FIXED) ----
+        # ✅ GPS — REAL DATA ONLY (NO DEFAULTS)
         gps_raw = self.gps_sensor.get_position()
 
+        gps = None
         if gps_raw and gps_raw.get("fix_quality", 0) > 0:
             gps = {
                 "latitude": gps_raw.get("latitude"),
@@ -68,24 +71,22 @@ class CrashDetectionUnit:
                 "satellites": gps_raw.get("satellites"),
                 "fix_quality": gps_raw.get("fix_quality"),
             }
-        else:
-            gps = None
 
         sensor_data = {
             "timestamp": datetime.utcnow().isoformat(),
+            "node_id": NODE_ID,
             "impact": impact,
             "accelerometer": accel,
             "gyroscope": gyro,
             "temperature": temperature,
-            "gps": gps,
-            "node_id": NODE_ID,
+            "gps": gps
         }
 
         return sensor_data
 
-    # -----------------------------
-    # CRASH DETECTION LOGIC
-    # -----------------------------
+    # --------------------------------------------------
+    # CRASH DETECTION
+    # --------------------------------------------------
     def detect_crash(self, sensor_data):
         accel = sensor_data.get("accelerometer")
         impact = sensor_data.get("impact")
@@ -97,7 +98,7 @@ class CrashDetectionUnit:
         ay = accel["y"]
         az = accel["z"]
 
-        accel_mag = (ax ** 2 + ay ** 2 + az ** 2) ** 0.5
+        accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
         print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
         if accel_mag >= IMPACT_THRESHOLD or impact:
@@ -105,9 +106,9 @@ class CrashDetectionUnit:
 
         return False, 0.0
 
-    # -----------------------------
-    # CRASH HANDLER
-    # -----------------------------
+    # --------------------------------------------------
+    # HANDLE CRASH
+    # --------------------------------------------------
     def handle_crash(self, sensor_data, confidence):
         gps = sensor_data.get("gps")
 
@@ -126,22 +127,21 @@ class CrashDetectionUnit:
             "pre_crash_buffer": list(self.data_buffer)
         }
 
-        print("[DEBUG] Crash GPS location:", location)
+        print("[DEBUG] Crash payload GPS:", location)
 
-        # Send to cloud (primary path)
+        # Send to AWS IoT
         try:
             self.cloud_client.publish(crash_payload)
             print("Crash alert sent to cloud")
         except Exception as e:
             print("Cloud publish failed:", e)
-            print("Fallback (LoRa / mesh) can be triggered here")
 
-        # Log to blackbox
+        # Blackbox crash log
         self.blackbox.log_crash(crash_payload)
 
-    # -----------------------------
+    # --------------------------------------------------
     # MAIN LOOP
-    # -----------------------------
+    # --------------------------------------------------
     def run(self):
         print("Starting crash detection loop...")
         interval = 1 / SAMPLE_RATE
@@ -150,15 +150,16 @@ class CrashDetectionUnit:
             while True:
                 sensor_data = self.read_all_sensors()
 
-                self.data_buffer.append(sensor_data)
+                # Continuous blackbox logging
                 self.blackbox.log(sensor_data, log_type="sensor")
+                self.data_buffer.append(sensor_data)
 
                 is_crash, confidence = self.detect_crash(sensor_data)
 
                 if is_crash:
                     print("🚨 CRASH DETECTED 🚨")
                     self.handle_crash(sensor_data, confidence)
-                    time.sleep(5)  # prevent repeated alerts
+                    time.sleep(5)
 
                 time.sleep(interval)
 
@@ -166,9 +167,9 @@ class CrashDetectionUnit:
             print("Shutting down gracefully...")
             self.cleanup()
 
-    # -----------------------------
+    # --------------------------------------------------
     # CLEANUP
-    # -----------------------------
+    # --------------------------------------------------
     def cleanup(self):
         try:
             self.mpu6050.cleanup()
@@ -184,9 +185,6 @@ class CrashDetectionUnit:
         print("Resources cleaned up")
 
 
-# -----------------------------
-# ENTRY POINT
-# -----------------------------
 def main():
     print("=" * 50)
     print("Mesh-Trace | Node-1 Crash Detection Unit")
