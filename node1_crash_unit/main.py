@@ -1,204 +1,185 @@
-import json
 import time
-import signal
-import sys
-import socket
-from collections import deque
 from datetime import datetime
+from collections import deque
 
-from .config import *
+from config import (
+    NODE_ID,
+    SAMPLE_RATE,
+    PRE_CRASH_DURATION,
+    IMPACT_THRESHOLD,
+)
 
-from .sensors.impact_sensor import ImpactSensor
-from .sensors.mpu6050 import MPU6050
-from .sensors.temperature import TemperatureSensor
-from .sensors.gps import GPSSensor
+from sensors.mpu6050 import MPU6050
+from sensors.impact_sensor import ImpactSensor
+from sensors.temperature import TemperatureSensor
+from sensors.gps import GPSSensor
 
-from .lora.lora_tx import LoRaTransmitter
-from .storage.blackbox_logger import BlackboxLogger
-from .cloud.mqtt_client import AWSIoTPublisher
-
-
-# -------------------------------------------------------------------
-# Internet connectivity check
-# -------------------------------------------------------------------
-def is_internet_available(host="8.8.8.8", port=53, timeout=2):
-    """
-    Lightweight internet connectivity check
-    Returns True if internet is available
-    """
-    try:
-        socket.setdefaulttimeout(timeout)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-        return True
-    except Exception:
-        return False
+from storage.blackbox_logger import BlackboxLogger
+from cloud.mqtt_client import AWSIoTPublisher
 
 
-# -------------------------------------------------------------------
-# Crash Detection Unit
-# -------------------------------------------------------------------
 class CrashDetectionUnit:
-
     def __init__(self):
         print("Initializing Crash Detection Unit...")
 
         # Sensors
-        self.impact_sensor = ImpactSensor(IMPACT_SENSOR_PINS)
-        self.mpu6050 = MPU6050(MPU6050_I2C_BUS, MPU6050_I2C_ADDRESS)
-        self.temperature_sensor = TemperatureSensor(TEMPERATURE_SENSOR_PIN)
-        self.gps_sensor = GPSSensor(GPS_SERIAL_PORT, GPS_BAUDRATE)
+        self.mpu6050 = MPU6050()
+        self.impact_sensor = ImpactSensor()
+        self.temperature_sensor = TemperatureSensor()
+        self.gps_sensor = GPSSensor()
 
-        # LoRa (fallback path)
-        self.lora_tx = LoRaTransmitter(
-            frequency=LORA_FREQUENCY,
-            spreading_factor=LORA_SPREADING_FACTOR,
-            bandwidth=LORA_BANDWIDTH,
-            coding_rate=LORA_CODING_RATE,
-            power=LORA_POWER,
-            cs_pin=LORA_CS_PIN,
-            reset_pin=LORA_RESET_PIN,
-            dio0_pin=LORA_DIO0_PIN
+        # Cloud
+        self.cloud_client = AWSIoTPublisher()
+
+        # Blackbox
+        self.blackbox = BlackboxLogger()
+
+        # Circular buffer for pre-crash data
+        self.data_buffer = deque(
+            maxlen=PRE_CRASH_DURATION * SAMPLE_RATE
         )
-
-        # Cloud MQTT (primary path)
-        self.cloud_client = AWSIoTPublisher({
-            "ca": AWS_CA_CERT,  
-            "cert": AWS_DEVICE_CERT,    
-            "key": AWS_PRIVATE_KEY  
-        })
-
-        # Storage
-        self.blackbox = BlackboxLogger(BLACKBOX_LOG_PATH)
-
-        # Pre-crash buffer
-        self.data_buffer = deque(maxlen=BUFFER_SIZE)
-
-        self.running = True
-
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
 
         print("Crash Detection Unit initialized successfully")
 
-    # ----------------------------------------------------------------
-    def signal_handler(self, sig, frame):
-        print("\nShutting down gracefully...")
-        self.running = False
-        self.cleanup()
-        sys.exit(0)
-
-    # ----------------------------------------------------------------
+    # -----------------------------
+    # SENSOR COLLECTION
+    # -----------------------------
     def read_all_sensors(self):
-        try:
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "impact": self.impact_sensor.read(),
-                "accelerometer": self.mpu6050.read_acceleration(),
-                "gyroscope": self.mpu6050.read_gyroscope(),
-                "temperature": self.temperature_sensor.read(),
-                "gps": self.gps_sensor.get_position(),
-                "node_id": NODE_ID
-            }
-        except Exception as e:
-            print(f"Sensor read error: {e}")
-            return None
+        accel = self.mpu6050.read_acceleration()
+        gyro = self.mpu6050.read_gyroscope()
+        impact = self.impact_sensor.read()
+        temperature = self.temperature_sensor.read()
 
-    # ----------------------------------------------------------------
+        # ---- GPS (FIXED) ----
+        gps_raw = self.gps_sensor.get_position()
+
+        if gps_raw and gps_raw.get("fix_quality", 0) > 0:
+            gps = {
+                "latitude": gps_raw.get("latitude"),
+                "longitude": gps_raw.get("longitude"),
+                "altitude": gps_raw.get("altitude"),
+                "satellites": gps_raw.get("satellites"),
+                "fix_quality": gps_raw.get("fix_quality"),
+            }
+        else:
+            gps = None
+
+        sensor_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "impact": impact,
+            "accelerometer": accel,
+            "gyroscope": gyro,
+            "temperature": temperature,
+            "gps": gps,
+            "node_id": NODE_ID,
+        }
+
+        return sensor_data
+
+    # -----------------------------
+    # CRASH DETECTION LOGIC
+    # -----------------------------
     def detect_crash(self, sensor_data):
-        if not sensor_data:
-            return False, 0.0
-        
-        accel = sensor_data.get("accelerometer") or sensor_data.get("accel")
+        accel = sensor_data.get("accelerometer")
+        impact = sensor_data.get("impact")
+
         if not accel:
             return False, 0.0
-        
+
         ax = accel["x"]
         ay = accel["y"]
         az = accel["z"]
 
-        print(f"[DEBUG] ax={ax:.2f}, ay={ay:.2f}, az={az:.2f}")
-
-        accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
+        accel_mag = (ax ** 2 + ay ** 2 + az ** 2) ** 0.5
         print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
 
-        if accel_mag >= IMPACT_THRESHOLD:
-            return True, 0.99
+        if accel_mag >= IMPACT_THRESHOLD or impact:
+            return True, 0.95
 
         return False, 0.0
 
-    # ----------------------------------------------------------------
+    # -----------------------------
+    # CRASH HANDLER
+    # -----------------------------
     def handle_crash(self, sensor_data, confidence):
-        print(f"\U0001F6A8 CRASH DETECTED | Confidence: {confidence:.2f}")
+        gps = sensor_data.get("gps")
 
-        crash_event = {
-            "type": "crash_event",
+        location = {
+            "latitude": gps["latitude"],
+            "longitude": gps["longitude"]
+        } if gps else None
+
+        crash_payload = {
+            "alert": "VEHICLE CRASH DETECTED",
             "node_id": NODE_ID,
-            "timestamp": datetime.now().isoformat(),
             "confidence": confidence,
-
-            # FLAT sensor fields
-            "accelerometer": sensor_data.get("accelerometer"),
-            "gyroscope": sensor_data.get("gyroscope"),
-            "impact": sensor_data.get("impact"),
-            "temperature": sensor_data.get("temperature"),
-            "gps": sensor_data.get("gps"),
-
-            # Pre-crash data
-            "pre_crash_buffer": list(self.data_buffer)[-PRE_CRASH_DURATION * SAMPLE_RATE:]
+            "location": location,
+            "timestamp": datetime.utcnow().isoformat(),
+            "crash_data": sensor_data,
+            "pre_crash_buffer": list(self.data_buffer)
         }
 
+        print("[DEBUG] Crash GPS location:", location)
 
-        # Always log locally
-        self.blackbox.log_crash(crash_event)
+        # Send to cloud (primary path)
+        try:
+            self.cloud_client.publish(crash_payload)
+            print("Crash alert sent to cloud")
+        except Exception as e:
+            print("Cloud publish failed:", e)
+            print("Fallback (LoRa / mesh) can be triggered here")
 
+        # Log to blackbox
+        self.blackbox.log_event(crash_payload)
 
-        # Decide path
-        if is_internet_available():
-            print("🌐 Internet available → sending directly to cloud")
-
-            self.cloud_client.publish(crash_event)
-            print("✅ Crash data sent to AWS IoT")
-
-        else:
-            print("📡 No internet → sending via LoRa relay")
-
-            self.lora_tx.send(json.dumps(crash_event))
-            print("📤 Crash data transmitted via LoRa")
-
-    # ----------------------------------------------------------------
+    # -----------------------------
+    # MAIN LOOP
+    # -----------------------------
     def run(self):
         print("Starting crash detection loop...")
-        sample_interval = 1.0 / SAMPLE_RATE
+        interval = 1 / SAMPLE_RATE
 
-        while self.running:
-            loop_start = time.time()
+        try:
+            while True:
+                sensor_data = self.read_all_sensors()
 
-            sensor_data = self.read_all_sensors()
-            if sensor_data:
                 self.data_buffer.append(sensor_data)
-                self.blackbox.log(sensor_data, log_type="sensor")
+                self.blackbox.log_data(sensor_data)
 
                 is_crash, confidence = self.detect_crash(sensor_data)
+
                 if is_crash:
+                    print("🚨 CRASH DETECTED 🚨")
                     self.handle_crash(sensor_data, confidence)
+                    time.sleep(5)  # prevent repeated alerts
 
-            elapsed = time.time() - loop_start
-            time.sleep(max(0, sample_interval - elapsed))
+                time.sleep(interval)
 
-    # ----------------------------------------------------------------
+        except KeyboardInterrupt:
+            print("Shutting down gracefully...")
+            self.cleanup()
+
+    # -----------------------------
+    # CLEANUP
+    # -----------------------------
     def cleanup(self):
-        print("Cleaning up resources...")
-        self.impact_sensor.cleanup()
-        self.mpu6050.cleanup()
-        self.temperature_sensor.cleanup()
-        self.gps_sensor.cleanup()
-        self.lora_tx.cleanup()
+        try:
+            self.mpu6050.cleanup()
+        except Exception:
+            pass
+
+        try:
+            self.gps_sensor.cleanup()
+        except Exception:
+            pass
+
         self.blackbox.close()
+        print("Resources cleaned up")
 
 
-# -------------------------------------------------------------------
-# Entry point
-# -------------------------------------------------------------------
+# -----------------------------
+# ENTRY POINT
+# -----------------------------
 def main():
     print("=" * 50)
     print("Mesh-Trace | Node-1 Crash Detection Unit")
@@ -206,17 +187,7 @@ def main():
     print("=" * 50)
 
     unit = CrashDetectionUnit()
-
-    try:
-        unit.run()
-    except KeyboardInterrupt:
-        print("Interrupted by user")
-    except Exception as e:
-        print(f"Fatal error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        unit.cleanup()
+    unit.run()
 
 
 if __name__ == "__main__":
