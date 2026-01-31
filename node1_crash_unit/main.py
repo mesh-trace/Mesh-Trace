@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime
 from collections import deque
@@ -29,7 +30,13 @@ class CrashDetectionUnit:
         self.gps_sensor = GPSSensor()
 
         # Cloud
-        self.cloud_client = AWSIoTPublisher()
+        self.cloud_client = AWSIoTPublisher(
+        certs={
+            "ca": os.getenv("AWS_CA_CERT"),
+            "cert": os.getenv("AWS_DEVICE_CERT"),
+            "key": os.getenv("AWS_PRIVATE_KEY")
+        }
+    )
 
         # Blackbox
         self.blackbox = BlackboxLogger()
