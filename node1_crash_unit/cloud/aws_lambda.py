@@ -120,13 +120,13 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         
         # Send alert notification
-        inner = crash_data.get('crash_data', {})
+        location = payload.get("location")
         sns_message = {
             'alert_type': 'crash_detected',
             'node_id': node_id,
             'timestamp': timestamp,
             'confidence': crash_data.get('confidence', 0.0),
-            'location': inner.get('gps', {}),
+            'location': location,
             's3_location': f"s3://{S3_BUCKET}/{s3_key}"
         }
         
