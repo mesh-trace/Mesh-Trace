@@ -14,6 +14,7 @@ from .config import (
 
 from .sensors.mpu6050 import MPU6050
 from .sensors.impact_sensor import ImpactSensor
+from .config import IMPACT_SENSOR_PINS
 from .sensors.temperature import TemperatureSensor
 from .sensors.gps import GPSSensor
 
@@ -27,7 +28,7 @@ class CrashDetectionUnit:
 
         # Sensors
         self.mpu6050 = MPU6050()
-        self.impact_sensor = ImpactSensor()
+        self.impact_sensor = ImpactSensor(IMPACT_SENSOR_PINS)
         self.temperature_sensor = TemperatureSensor()
         self.gps_sensor = GPSSensor()
 
