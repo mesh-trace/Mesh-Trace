@@ -137,7 +137,7 @@ class CrashDetectionUnit:
             print("Fallback (LoRa / mesh) can be triggered here")
 
         # Log to blackbox
-        self.blackbox.log_event(crash_payload)
+        self.blackbox.log_crash(crash_payload)
 
     # -----------------------------
     # MAIN LOOP
@@ -151,7 +151,7 @@ class CrashDetectionUnit:
                 sensor_data = self.read_all_sensors()
 
                 self.data_buffer.append(sensor_data)
-                self.blackbox.log_data(sensor_data)
+                self.blackbox.log(sensor_data, log_type="sensor")
 
                 is_crash, confidence = self.detect_crash(sensor_data)
 
