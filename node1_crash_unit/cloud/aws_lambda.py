@@ -19,7 +19,7 @@ dynamodb = boto3.resource('dynamodb')
 sns_client = boto3.client('sns')
 
 # Configuration from environment variables
-S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-archive-et8')
+S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-archive-et8-sav')
 DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'MeshTraceCrashTable')
 SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN')
 
