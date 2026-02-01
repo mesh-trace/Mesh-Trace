@@ -38,7 +38,7 @@ IMPACT_SENSOR_PINS = get_int_list('IMPACT_SENSOR_PINS', [22, 23, 24, 25])
 MPU6050_I2C_ADDRESS = int(os.getenv('MPU6050_I2C_ADDRESS', '104'))
 MPU6050_I2C_BUS = int(os.getenv('MPU6050_I2C_BUS', '1'))
 TEMPERATURE_SENSOR_PIN = int(os.getenv('TEMPERATURE_SENSOR_PIN', '4'))
-GPS_SERIAL_PORT = os.getenv('GPS_SERIAL_PORT', '/dev/ttyAMA0')
+GPS_SERIAL_PORT = os.getenv('GPS_SERIAL_PORT', '/dev/ttyS0')
 GPS_BAUDRATE = int(os.getenv('GPS_BAUDRATE', '9600'))
 
 # Crash Detection Thresholds (threshold-based, no AI)
