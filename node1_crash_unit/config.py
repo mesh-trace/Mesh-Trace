@@ -57,8 +57,8 @@ LORA_BANDWIDTH = int(os.getenv('LORA_BANDWIDTH', '125000'))
 LORA_CODING_RATE = int(os.getenv('LORA_CODING_RATE', '5'))
 LORA_POWER = int(os.getenv('LORA_POWER', '14'))
 LORA_CS_PIN = int(os.getenv('LORA_CS_PIN', '8'))
-LORA_RESET_PIN = int(os.getenv('LORA_RESET_PIN', '25'))
-LORA_DIO0_PIN = int(os.getenv('LORA_DIO0_PIN', '24'))
+LORA_RESET_PIN = int(os.getenv('LORA_RESET_PIN', '26'))
+LORA_DIO0_PIN = int(os.getenv('LORA_DIO0_PIN', '18'))
 
 # Storage Configuration
 BLACKBOX_LOG_PATH = os.getenv('BLACKBOX_LOG_PATH', './logs/')
