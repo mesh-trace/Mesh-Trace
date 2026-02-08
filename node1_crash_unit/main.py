@@ -15,7 +15,7 @@ from .config import (
 
 from .sensors.mpu6050 import MPU6050
 from .sensors.impact_sensor import ImpactSensor
-from .sensors.gps import GPS
+from .sensors.gps import GPSSensor
 from .cloud.mqtt_client import AWSIoTPublisher
 from .storage.blackbox_logger import BlackboxLogger
 from .lora.lora_tx import LoRaCrashTX
@@ -25,7 +25,7 @@ class CrashDetectionUnit:
     def __init__(self):
         self.mpu = MPU6050()
         self.impact = ImpactSensor(IMPACT_SENSOR_PINS)
-        self.gps = GPS()
+        self.gps = GPSSensor() 
         self.blackbox = BlackboxLogger()
         self.aws = AWSIoTPublisher()
         self.lora = LoRaCrashTX()
