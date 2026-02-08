@@ -5,7 +5,7 @@ Receives MQTT messages from IoT Core and processes crash events
 
 import json
 import os
-import boto3
+import boto3  # pyright: ignore[reportMissingImports]
 from datetime import datetime
 from typing import Dict, Any
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
