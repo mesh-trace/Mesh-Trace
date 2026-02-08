@@ -1,45 +1,57 @@
-import time
+import sys
+import os
 import json
-from SX127x.LoRa import LoRa  # pyright: ignore[reportMissingImports]
-from SX127x.board_config import BOARD  # pyright: ignore[reportMissingImports]
-from SX127x.constants import MODE  # pyright: ignore[reportMissingImports]
+import time
+from datetime import datetime, timezone
 
-BOARD.setup()
+sys.path.append(os.path.abspath("../lora_driver"))
 
-class LoRaSender(LoRa):
+from SX127x.LoRa import LoRa
+from SX127x.board_config import BOARD
+from SX127x.constants import MODE
+
+
+class LoRaCrashTX(LoRa):
     def __init__(self):
+        BOARD.setup()
         super().__init__(verbose=False)
-        self.set_mode(MODE.SLEEP)
-        self.set_dio_mapping([0]*6)
-
-        self.set_freq(868.0)
-        self.set_pa_config(pa_select=1)
-        self.set_spreading_factor(7)
-        self.set_bw(7)
-        self.set_coding_rate(5)
 
         self.set_mode(MODE.STDBY)
+        self.set_freq(433.0)
 
-    def send(self, payload: dict):
-        message = json.dumps(payload)
-        self.write_payload([ord(c) for c in message])
+        self.set_pa_config(pa_select=1, max_power=0x70, output_power=0x0F)
+
+        print("[INFO] LoRa Crash TX initialized")
+
+    def send_payload(self, payload_dict):
+        payload_json = json.dumps(payload_dict)
+
+        print("[INFO] Sending crash payload:")
+        print(payload_json)
+
+        self.write_payload([ord(c) for c in payload_json])
         self.set_mode(MODE.TX)
+
         time.sleep(0.5)
         self.set_mode(MODE.STDBY)
-        print("[LoRa] Payload sent:", message)
+
+        print("[SUCCESS] Crash payload transmitted")
 
 
 if __name__ == "__main__":
-    sender = LoRaSender()
+    lora = LoRaCrashTX()
 
+    # Example crash payload (this will come from main.py later)
     crash_payload = {
+        "alert": "VEHICLE_CRASH_DETECTED",
         "node_id": "mesh-trace-node-001",
-        "event": "crash",
-        "lat": 18.4983,
-        "lon": 73.9499,
         "severity": "HIGH",
-        "confidence": 0.95
+        "location": {
+            "latitude": 18.49831,
+            "longitude": 73.94994
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-    sender.send(crash_payload)
-    BOARD.teardown()
+    time.sleep(1)
+    lora.send_payload(crash_payload)
