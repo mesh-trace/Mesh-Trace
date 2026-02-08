@@ -71,7 +71,7 @@ class CrashDetectionUnit:
             if DEBUG_MODE:
                 print(f"[DEBUG] Accel magnitude: {accel_mag:.2f} m/s²")
 
-            # 🔑 CORE LOGIC: acceleration + impact correlation
+            # CORE LOGIC: acceleration + impact correlation
             if impact_event and accel_mag >= ACCELERATION_THRESHOLD:
                 print("🚨 CRASH DETECTED 🚨")
 
@@ -92,7 +92,7 @@ class CrashDetectionUnit:
                 }
 
                 # Local blackbox logging (always)
-                self.blackbox.log_event(payload)
+                self.blackbox.log_crash(payload)
                 print("[INFO] Crash event logged locally")
 
                 # Cloud or LoRa decision
