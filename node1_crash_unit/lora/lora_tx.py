@@ -4,11 +4,12 @@ import json
 import time
 from datetime import datetime, timezone
 
-sys.path.append(os.path.abspath("../lora_driver"))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../lora_driver"))
+sys.path.append(BASE_DIR)
 
-from SX127x.LoRa import LoRa
-from SX127x.board_config import BOARD
-from SX127x.constants import MODE
+from SX127x.LoRa import LoRa  # pyright: ignore[reportMissingImports]
+from SX127x.board_config import BOARD  # pyright: ignore[reportMissingImports]
+from SX127x.constants import MODE  # pyright: ignore[reportMissingImports]
 
 
 class LoRaCrashTX(LoRa):
