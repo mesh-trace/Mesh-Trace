@@ -98,7 +98,7 @@ class CrashDetectionUnit:
                 # Cloud or LoRa decision
                 if self.network_available():
                     print("[INFO] Network available → sending to AWS IoT")
-                    self.aws.publish(MQTT_TOPIC, payload)
+                    self.aws.publish(payload)
                     print("[SUCCESS] Crash sent to AWS IoT")
                 else:
                     print("[WARN] No network → sending via LoRa")
