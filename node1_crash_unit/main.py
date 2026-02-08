@@ -16,6 +16,7 @@ from .config import (
 from .sensors.mpu6050 import MPU6050
 from .sensors.impact_sensor import ImpactSensor
 from .sensors.gps import GPSSensor
+from .config import AWS_CA_CERT, AWS_DEVICE_CERT, AWS_PRIVATE_KEY
 from .cloud.mqtt_client import AWSIoTPublisher
 from .storage.blackbox_logger import BlackboxLogger
 from .lora.lora_tx import LoRaCrashTX
@@ -27,7 +28,7 @@ class CrashDetectionUnit:
         self.impact = ImpactSensor(IMPACT_SENSOR_PINS)
         self.gps = GPSSensor() 
         self.blackbox = BlackboxLogger()
-        self.aws = AWSIoTPublisher()
+        self.aws = AWSIoTPublisher({"ca": AWS_CA_CERT, "cert": AWS_DEVICE_CERT, "key": AWS_PRIVATE_KEY})
         self.lora = LoRaCrashTX()
 
     # ----------------------------
