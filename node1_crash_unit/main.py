@@ -1,156 +1,112 @@
 import time
+import math
 import json
 import socket
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from .config import (
-    NODE_ID,
+    IMPACT_SENSOR_PINS,
     IMPACT_THRESHOLD,
-    ACCEL_THRESHOLD,
+    ACCELERATION_THRESHOLD,
+    NODE_ID,
+    MQTT_TOPIC,
+    DEBUG_MODE
 )
 
 from .sensors.mpu6050 import MPU6050
 from .sensors.impact_sensor import ImpactSensor
 from .sensors.gps import GPS
-from .storage.blackbox_logger import BlackboxLogger
 from .cloud.mqtt_client import AWSIoTPublisher
+from .storage.blackbox_logger import BlackboxLogger
 from .lora.lora_tx import LoRaCrashTX
-
-
-# IST timezone
-IST = timezone(timedelta(hours=5, minutes=30))
-
-
-def is_network_available():
-    try:
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
-        return True
-    except OSError:
-        return False
 
 
 class CrashDetectionUnit:
     def __init__(self):
-        print("Initializing Crash Detection Unit...")
-
         self.mpu = MPU6050()
-        self.impact = ImpactSensor()
+        self.impact = ImpactSensor(IMPACT_SENSOR_PINS)
         self.gps = GPS()
-
         self.blackbox = BlackboxLogger()
-        self.cloud_client = AWSIoTPublisher()
-        self.lora_tx = LoRaCrashTX()
+        self.aws = AWSIoTPublisher()
+        self.lora = LoRaCrashTX()
 
-        self.data_buffer = []  # pre-crash rolling buffer
-        self.buffer_size = 20
-
-        print("Crash Detection Unit initialized successfully")
-
-    def read_sensors(self):
-        accel = self.mpu.read_acceleration()
-        impact = self.impact.read()
-        gps_data = self.gps.get_position()
-
-        sensor_data = {
-            "accelerometer": accel,
-            "impact": impact,
-            "gps": gps_data,
-            "node_id": NODE_ID
-        }
-
-        return sensor_data
-
-    def detect_crash(self, sensor_data):
-        accel = sensor_data.get("accelerometer")
-        impact = sensor_data.get("impact")
-
-        if not accel:
-            return False, "NONE", 0.0
-
-        ax = accel["x"]
-        ay = accel["y"]
-        az = accel["z"]
-
-        accel_mag = (ax ** 2 + ay ** 2 + az ** 2) ** 0.5
-        print(f"[DEBUG] Accel magnitude: {accel_mag:.2f} m/s²")
-
-        if impact and accel_mag >= ACCEL_THRESHOLD:
-            if accel_mag >= 25:
-                severity = "HIGH"
-            elif accel_mag >= 15:
-                severity = "MEDIUM"
-            else:
-                severity = "LOW"
-
-            return True, severity, accel_mag
-
-        return False, "NONE", accel_mag
-
-    def handle_crash(self, sensor_data, severity, accel_mag):
-        gps = sensor_data.get("gps")
-
-        crash_payload = {
-            "type": "crash_alert",
-            "node_id": NODE_ID,
-            "timestamp": datetime.now(IST).isoformat(),
-
-            "location": {
-                "latitude": gps["latitude"],
-                "longitude": gps["longitude"]
-            } if gps and gps["latitude"] else None,
-
-            "data": {
-                "severity": severity,
-                "confidence": round(accel_mag, 2),
-                "sensors": sensor_data,
-                "pre_crash_buffer": list(self.data_buffer)
-            }
-        }
-
-        print(f"🚨 CRASH DETECTED | Severity: {severity}")
-
-        self.blackbox.log_crash(crash_payload)
-
-        if is_network_available():
-            print("[INFO] Network available → sending to AWS IoT")
-            try:
-                self.cloud_client.publish(crash_payload)
-                print("[SUCCESS] Crash sent to AWS IoT")
-            except Exception as e:
-                print("[ERROR] AWS failed → fallback to LoRa:", e)
-                self.lora_tx.send_payload(crash_payload)
-        else:
-            print("[WARN] No network → sending crash via LoRa")
-            self.lora_tx.send_payload(crash_payload)
-
-    def run(self):
-        print("Starting crash detection loop...")
-
+    # ----------------------------
+    # Network check
+    # ----------------------------
+    def network_available(self) -> bool:
         try:
-            while True:
-                sensor_data = self.read_sensors()
+            socket.create_connection(("8.8.8.8", 53), timeout=2)
+            return True
+        except OSError:
+            return False
 
-                self.data_buffer.append(sensor_data)
-                if len(self.data_buffer) > self.buffer_size:
-                    self.data_buffer.pop(0)
+    # ----------------------------
+    # Severity logic
+    # ----------------------------
+    def calculate_severity(self, accel_mag: float) -> str:
+        if accel_mag < 12:
+            return "LOW"
+        elif accel_mag < 18:
+            return "MEDIUM"
+        else:
+            return "HIGH"
 
-                crash, severity, accel_mag = self.detect_crash(sensor_data)
+    # ----------------------------
+    # Main loop
+    # ----------------------------
+    def run(self):
+        print("[INFO] Crash Detection Unit started")
 
-                if crash:
-                    self.handle_crash(sensor_data, severity, accel_mag)
-                    time.sleep(5)  # debounce after crash
+        while True:
+            accel = self.mpu.read_acceleration()
+            impact_event = self.impact.read()
 
-                time.sleep(0.2)
+            accel_mag = math.sqrt(
+                accel["x"]**2 +
+                accel["y"]**2 +
+                accel["z"]**2
+            )
 
-        except KeyboardInterrupt:
-            print("Shutting down gracefully...")
-            self.cleanup()
+            if DEBUG_MODE:
+                print(f"[DEBUG] Accel magnitude: {accel_mag:.2f} m/s²")
 
-    def cleanup(self):
-        self.mpu.cleanup()
-        self.impact.cleanup()
-        self.gps.cleanup()
-        print("Cleanup completed")
+            # 🔑 CORE LOGIC: acceleration + impact correlation
+            if impact_event and accel_mag >= ACCELERATION_THRESHOLD:
+                print("🚨 CRASH DETECTED 🚨")
+
+                severity = self.calculate_severity(accel_mag)
+                gps_data = self.gps.get_position()
+
+                timestamp_utc = datetime.now(timezone.utc).isoformat()
+
+                payload = {
+                    "alert": "VEHICLE CRASH DETECTED",
+                    "node_id": NODE_ID,
+                    "severity": severity,
+                    "location": {
+                        "latitude": gps_data["latitude"] if gps_data else None,
+                        "longitude": gps_data["longitude"] if gps_data else None
+                    },
+                    "timestamp": timestamp_utc
+                }
+
+                # Local blackbox logging (always)
+                self.blackbox.log_event(payload)
+                print("[INFO] Crash event logged locally")
+
+                # Cloud or LoRa decision
+                if self.network_available():
+                    print("[INFO] Network available → sending to AWS IoT")
+                    self.aws.publish(MQTT_TOPIC, payload)
+                    print("[SUCCESS] Crash sent to AWS IoT")
+                else:
+                    print("[WARN] No network → sending via LoRa")
+                    self.lora.send(payload)
+                    print("[SUCCESS] Crash sent via LoRa")
+
+                time.sleep(5)  # avoid duplicate alerts
+
+            time.sleep(0.1)
 
 
 def main():
