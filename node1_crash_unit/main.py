@@ -87,18 +87,16 @@ class CrashDetectionUnit:
 
                 # ✅ LAMBDA-COMPATIBLE PAYLOAD
                 payload = {
-                    "type": "crash_alert",   # REQUIRED by Lambda
+                    "alert": "VEHICLE CRASH DETECTED",
                     "node_id": NODE_ID,
-                    "timestamp": timestamp_utc,
+                    "severity": severity,
                     "location": {
-                        "latitude": gps_data["latitude"] if gps_data else None,
-                        "longitude": gps_data["longitude"] if gps_data else None
+                        "latitude": gps_data["latitude"] if gps_data else 0.0,
+                        "longitude": gps_data["longitude"] if gps_data else 0.0
                     },
-                    "data": {
-                        "severity": severity,
-                        "acceleration_magnitude": round(accel_mag, 2)
-                    }
+                    "timestamp": timestamp_utc
                 }
+
 
                 print("[DEBUG] Payload:", json.dumps(payload, indent=2))
 
