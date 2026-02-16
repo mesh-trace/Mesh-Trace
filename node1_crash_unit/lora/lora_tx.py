@@ -3,6 +3,27 @@ import os
 import json
 import time
 from datetime import datetime, timezone
+import base64
+import hashlib
+import hmac
+from Crypto.Cipher import AES  # pyright: ignore[reportMissingImports]
+from Crypto.Random import get_random_bytes  # pyright: ignore[reportMissingImports]
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
+load_dotenv()
+key_hex = os.getenv("LORA_SECRET_KEY")
+
+if not key_hex:
+    raise ValueError("LORA_SECRET_KEY not set in environment")
+
+try:
+    SECRET_KEY = bytes.fromhex(key_hex)
+except ValueError:
+    raise ValueError("LORA_SECRET_KEY must be valid hex")
+
+if len(SECRET_KEY) != 32:
+    raise ValueError("LORA_SECRET_KEY must be 32 bytes (64 hex characters)")
+
+
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../lora_driver"))
 sys.path.append(BASE_DIR)
@@ -24,13 +45,33 @@ class LoRaCrashTX(LoRa):
 
         print("[INFO] LoRa Crash TX initialized")
 
+    def encrypt_payload(self, data: str):
+        iv = get_random_bytes(16) # pyright: ignore[reportUnknownReturnType]
+        cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv) # pyright: ignore[reportUnknownReturnType]
+
+        # PKCS7 padding
+        data_bytes = data.encode()
+        pad_len = 16 - (len(data_bytes) % 16)
+        padded = data_bytes + bytes([pad_len] * pad_len)
+        encrypted = cipher.encrypt(padded) # pyright: ignore[reportUnknownReturnType]
+
+
+        # HMAC
+        mac = hmac.new(SECRET_KEY, iv + encrypted, hashlib.sha256).digest() # pyright: ignore[reportUnknownReturnType]
+
+        final_packet = iv + mac + encrypted
+        return base64.b64encode(final_packet).decode()
+ 
+
     def send_payload(self, payload_dict):
         payload_json = json.dumps(payload_dict)
+        secure_payload = self.encrypt_payload(payload_json)
+
 
         print("[INFO] Sending crash payload:")
         print(payload_json)
 
-        self.write_payload([ord(c) for c in payload_json])
+        self.write_payload([ord(c) for c in secure_payload])
         self.set_mode(MODE.TX)
 
         time.sleep(0.5)
