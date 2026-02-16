@@ -41,7 +41,7 @@ class LoRaCrashTX(LoRa):
         self.set_mode(MODE.STDBY)
         self.set_freq(433.0)
         self.set_bw(7)                 # 125 kHz
-        self.set_spreading_factor(7)   # SF7
+        self.set_spreading_factor(9)   # SF7
         self.set_coding_rate(1)        # 4/5
         self.set_sync_word(0x34)
         self.set_pa_config(pa_select=1, max_power=0x70, output_power=0x0F)
