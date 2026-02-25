@@ -127,9 +127,12 @@ class CrashDetectionUnit:
             "longitude": gps["longitude"]
         } if gps else None
 
+        severity = "HIGH"
+
         crash_payload = {
             "alert": "VEHICLE CRASH DETECTED",
             "node_id": NODE_ID,
+            "severity": severity,
             "confidence": confidence,
             "location": location,
             "timestamp": datetime.now(timezone.utc).isoformat(),
