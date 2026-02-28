@@ -36,7 +36,7 @@ class CrashDetectionUnit:
         self.last_known_gps = None
 
         # Cloud
-        self.cloud_client = AWSIoTPublisher(
+        self.cloud_client = gitPublisher(  # pyright: ignore[reportUndefinedVariable]
             certs={
                 "ca": AWS_CA_CERT,
                 "cert": AWS_DEVICE_CERT,
