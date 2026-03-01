@@ -4,6 +4,7 @@ Provides latitude and longitude for crash reporting
 Compatible with Raspberry Pi Zero WH and GN* NMEA sentences
 """
 
+import logging
 import serial
 import time
 
@@ -12,7 +13,10 @@ try:
     NMEA_AVAILABLE = True
 except ImportError:
     NMEA_AVAILABLE = False
-    print("Warning: pynmea2 not available - GPS disabled")
+
+logger = logging.getLogger(__name__)
+if not NMEA_AVAILABLE:
+    logger.warning("pynmea2 not available - GPS disabled")
 
 
 class GPSSensor:
@@ -37,6 +41,7 @@ class GPSSensor:
 
     def _initialize(self):
         try:
+            logger.debug("GPS init: port=%s baudrate=%d", self.port, self.baudrate)
             self.serial_conn = serial.Serial(
                 self.port,
                 self.baudrate,
@@ -44,8 +49,9 @@ class GPSSensor:
             )
             self.initialized = True
             time.sleep(1.0)
+            logger.info("GPS initialized: port=%s", self.port)
         except Exception as e:
-            print(f"Warning: Could not initialize GPS: {e}")
+            logger.warning("Could not initialize GPS: %s", e)
             self.initialized = False
 
     def _update_from_nmea(self, line):
@@ -64,6 +70,7 @@ class GPSSensor:
                     self.last_position["satellites"] = int(msg.num_sats) if msg.num_sats else 0
                     self.last_position["fix_quality"] = int(msg.gps_qual)
                     self.last_position["timestamp"] = time.time()
+                    logger.debug("GPS GGA fix: lat=%s lon=%s sats=%d qual=%d", msg.latitude, msg.longitude, self.last_position["satellites"], msg.gps_qual)
 
             # RMC → speed, course, validity
             elif isinstance(msg, pynmea2.types.talker.RMC):
@@ -73,18 +80,21 @@ class GPSSensor:
                     self.last_position["speed"] = float(msg.spd_over_grnd) if msg.spd_over_grnd else None
                     self.last_position["course"] = float(msg.true_course) if msg.true_course else None
                     self.last_position["timestamp"] = time.time()
+                    logger.debug("GPS RMC: lat=%s lon=%s speed=%s", msg.latitude, msg.longitude, msg.spd_over_grnd)
 
-        except pynmea2.ParseError:
-            pass
-        except Exception:
-            pass
+        except pynmea2.ParseError as e:
+            logger.debug("NMEA parse error: %s", e)
+        except Exception as e:
+            logger.debug("NMEA update error: %s", e)
 
     def get_position(self):
         if not self.initialized or not self.serial_conn:
+            logger.debug("GPS not initialized, returning cached position")
             return self.last_position.copy()
 
         try:
             start = time.time()
+            lines_read = 0
 
             # Read for up to 500 ms
             while time.time() - start < 0.5:
@@ -95,11 +105,17 @@ class GPSSensor:
 
                     if line.startswith("$"):
                         self._update_from_nmea(line)
+                        lines_read += 1
 
                 time.sleep(0.01)
 
+            if self.last_position.get("fix_quality", 0) > 0:
+                logger.debug("GPS fix: lat=%s lon=%s sats=%d (lines=%d)", self.last_position.get("latitude"), self.last_position.get("longitude"), self.last_position.get("satellites", 0), lines_read)
+            else:
+                logger.debug("GPS no fix (lines_read=%d)", lines_read)
+
         except Exception as e:
-            print(f"GPS read error: {e}")
+            logger.error("GPS read error: %s", e, exc_info=True)
 
         return self.last_position.copy()
 
@@ -114,6 +130,7 @@ class GPSSensor:
         if self.serial_conn:
             try:
                 self.serial_conn.close()
-            except Exception:
-                pass
+                logger.debug("GPS serial port closed")
+            except Exception as e:
+                logger.warning("GPS cleanup error: %s", e)
         self.initialized = False

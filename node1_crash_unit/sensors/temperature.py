@@ -127,6 +127,7 @@ class TemperatureSensor:
                 if humidity is not None and temperature is not None:
                     # Validate reasonable ranges (DHT22 specs: -40 to 80°C, 0-100% RH)
                     if -40.0 <= temperature <= 80.0 and 0.0 <= humidity <= 100.0:
+                        logger.debug("DHT22 read success: temp=%.1f°C humidity=%.1f%%", temperature, humidity)
                         return (humidity, temperature)
                     else:
                         logger.warning(
@@ -180,6 +181,7 @@ class TemperatureSensor:
         if time_since_last_read < self.read_interval:
             # Too soon since last read - return None to indicate no new data
             # This prevents blocking and respects sensor timing requirements
+            logger.debug("DHT22 read skipped: interval %.1fs not met (%.1fs since last)", self.read_interval, time_since_last_read)
             return {"temperature": None, "humidity": None}
         
         # Attempt to read sensor with retry logic

@@ -6,10 +6,13 @@ Stores crash data and sensor logs persistently (like aircraft blackbox)
 import os
 import json
 import gzip
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
 from ..config import BLACKBOX_LOG_PATH, BLACKBOX_MAX_SIZE_MB, BLACKBOX_ROTATION_COUNT
+
+logger = logging.getLogger(__name__)
 
 
 class BlackboxLogger:
@@ -25,13 +28,17 @@ class BlackboxLogger:
         self.log_path = log_path or BLACKBOX_LOG_PATH
         self.max_size_bytes = BLACKBOX_MAX_SIZE_MB * 1024 * 1024
         self.rotation_count = BLACKBOX_ROTATION_COUNT
-        
+
+        logger.debug("BlackboxLogger init: path=%s max_size_mb=%d rotation_count=%d", self.log_path, BLACKBOX_MAX_SIZE_MB, self.rotation_count)
+
         # Ensure log directory exists
         os.makedirs(self.log_path, exist_ok=True)
-        
+        logger.debug("Log directory ensured: %s", self.log_path)
+
         # Current log file
         self.current_log_file = os.path.join(self.log_path, "blackbox_current.jsonl")
         self.crash_log_file = os.path.join(self.log_path, "crash_events.jsonl")
+        logger.info("Blackbox logger initialized: sensor_log=%s crash_log=%s", self.current_log_file, self.crash_log_file)
     
     def _get_log_size(self, filepath):
         """Get size of log file in bytes"""
@@ -43,30 +50,33 @@ class BlackboxLogger:
         """Rotate log file when it gets too large"""
         if not os.path.exists(filepath):
             return
-        
+
         current_size = self._get_log_size(filepath)
         if current_size < self.max_size_bytes:
+            logger.debug("Log size %d < max %d, no rotation needed", current_size, self.max_size_bytes)
             return
-        
+
+        logger.info("Log rotation triggered: size=%d bytes max=%d bytes", current_size, self.max_size_bytes)
+
         # Compress and archive current log
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_file = filepath.replace("current", f"archive_{timestamp}").replace(".jsonl", ".jsonl.gz")
-        
+
         try:
             # Compress current log
             with open(filepath, 'rb') as f_in:
                 with gzip.open(archive_file, 'wb') as f_out:
                     f_out.writelines(f_in)
-            
+
             # Remove original file
             os.remove(filepath)
-            
+
             # Cleanup old archives (keep only rotation_count most recent)
             self._cleanup_old_archives()
-            
-            print(f"Log rotated: {archive_file}")
+
+            logger.info("Log rotated: %s", archive_file)
         except Exception as e:
-            print(f"Error rotating log: {e}")
+            logger.error("Error rotating log: %s", e, exc_info=True)
     
     def _cleanup_old_archives(self):
         """Remove old log archives beyond rotation count"""
@@ -81,14 +91,14 @@ class BlackboxLogger:
             for old_file in archive_files[self.rotation_count:]:
                 old_path = os.path.join(self.log_path, old_file)
                 os.remove(old_path)
-                print(f"Removed old archive: {old_file}")
+                logger.debug("Removed old archive: %s", old_file)
         except Exception as e:
-            print(f"Error cleaning up archives: {e}")
+            logger.error("Error cleaning up archives: %s", e, exc_info=True)
     
     def log(self, data, log_type="sensor"):
         """
         Log data to blackbox
-        
+
         Args:
             data: Dictionary or JSON-serializable data to log
             log_type: Type of log entry (sensor, crash, etc.)
@@ -99,22 +109,24 @@ class BlackboxLogger:
                 'type': log_type,
                 'data': data
             }
-            
+
             log_line = json.dumps(log_entry) + '\n'
-            
+
             # Append to current log
             with open(self.current_log_file, 'a') as f:
                 f.write(log_line)
-            
+
+            logger.debug("Logged %s entry: %d bytes", log_type, len(log_line))
+
             # Check if rotation is needed
             self._rotate_log(self.current_log_file)
         except Exception as e:
-            print(f"Error logging to blackbox: {e}")
+            logger.error("Error logging to blackbox: %s", e, exc_info=True)
     
     def log_crash(self, crash_data):
         """
         Log crash event specifically
-        
+
         Args:
             crash_data: Crash event data dictionary
         """
@@ -124,19 +136,19 @@ class BlackboxLogger:
                 'type': 'crash_event',
                 'crash_data': crash_data
             }
-            
+
             crash_line = json.dumps(crash_entry) + '\n'
-            
+
             # Append to crash log
             with open(self.crash_log_file, 'a') as f:
                 f.write(crash_line)
-            
+
+            logger.info("Crash event logged: file=%s severity=%s", self.crash_log_file, crash_data.get("severity"))
+
             # Also log to general log
             self.log(crash_data, log_type='crash')
-            
-            print(f"Crash event logged: {self.crash_log_file}")
         except Exception as e:
-            print(f"Error logging crash event: {e}")
+            logger.error("Error logging crash event: %s", e, exc_info=True)
     
     def read_recent_logs(self, count=100, log_type=None):
         """
@@ -161,9 +173,10 @@ class BlackboxLogger:
                         entry = json.loads(line.strip())
                         if log_type is None or entry.get('type') == log_type:
                             entries.append(entry)
+            logger.debug("Read %d log entries (type=%s)", len(entries), log_type)
         except Exception as e:
-            print(f"Error reading logs: {e}")
-        
+            logger.error("Error reading logs: %s", e, exc_info=True)
+
         return entries
     
     def read_crash_logs(self, count=50):
@@ -184,12 +197,12 @@ class BlackboxLogger:
                     lines = f.readlines()
                     for line in lines[-count:]:
                         entries.append(json.loads(line.strip()))
+            logger.debug("Read %d crash log entries", len(entries))
         except Exception as e:
-            print(f"Error reading crash logs: {e}")
-        
+            logger.error("Error reading crash logs: %s", e, exc_info=True)
+
         return entries
-    
+
     def close(self):
         """Close logger and cleanup"""
-        # Nothing special needed for file-based logging
-        pass
+        logger.debug("Blackbox logger closed")

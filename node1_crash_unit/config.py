@@ -76,7 +76,23 @@ NODE_ID = os.getenv('NODE_ID', 'mesh-trace-node-001')
 
 # Debug Configuration
 DEBUG_MODE = get_bool('DEBUG_MODE', False)
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG')
+
+
+def setup_logging(name: str = None):
+    """Configure logging for the crash detection unit. Call early in main()."""
+    import logging
+    import sys
+    level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+    fmt = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    logging.basicConfig(
+        level=level,
+        format=fmt,
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+        force=True,
+    )
+    return logging.getLogger(name or __name__)
 
 # AWS IoT Certificates
 AWS_CA_CERT = os.getenv('AWS_CA_CERT')
