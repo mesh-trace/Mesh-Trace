@@ -182,7 +182,16 @@ class CrashDetectionUnit:
             "crash_data": sensor_data,
             "pre_crash_buffer": list(self.data_buffer)
         }
-        logger.debug("Crash payload: location=%s buffer_len=%d", crash_payload.get("location"), len(crash_payload.get("pre_crash_buffer", [])))
+        # Detailed payload logging before send (for MQTT debug)
+        pre_crash_len = len(crash_payload.get("pre_crash_buffer", []))
+        payload_size_bytes = len(str(crash_payload))  # rough size
+        logger.info(
+            "Crash payload before send: node_id=%s severity=%s location=%s pre_crash_buffer=%d samples payload_approx=%d bytes",
+            crash_payload.get("node_id"), crash_payload.get("severity"), crash_payload.get("location"),
+            pre_crash_len, payload_size_bytes
+        )
+        logger.debug("Crash payload keys: %s", list(crash_payload.keys()))
+        logger.debug("Crash payload (full): %s", crash_payload)
 
         # Always log locally
         logger.debug("Logging crash to blackbox")
