@@ -199,11 +199,10 @@ class CrashDetectionUnit:
 
         if is_network_available():
             logger.info("Network available → sending to AWS IoT")
-            try:
-                self.cloud_client.publish(crash_payload)
+            if self.cloud_client.safe_publish(crash_payload):
                 logger.info("Crash sent to AWS IoT successfully")
-            except Exception as e:
-                logger.error("AWS publish failed, falling back to LoRa: %s", e, exc_info=True)
+            else:
+                logger.warning("safe_publish failed after retries → falling back to LoRa")
                 self.lora_tx.send_payload(crash_payload)
         else:
             logger.warning("No network → sending crash via LoRa relay")
