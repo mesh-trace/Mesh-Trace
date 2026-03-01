@@ -4,6 +4,7 @@ import time
 import paho.mqtt.client as mqtt    # pyright: ignore[reportMissingImports]
 from ..config import AWS_IOT_ENDPOINT, MQTT_TOPIC, MQTT_QOS
 from ..config import AWS_CA_CERT, AWS_DEVICE_CERT, AWS_PRIVATE_KEY
+from ..config import NODE_ID
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class AWSIoTPublisher:
         logger.info("Initializing AWS IoT MQTT client: endpoint=%s topic=%s", AWS_IOT_ENDPOINT, MQTT_TOPIC)
         self.connected = False
         try:
-            self.client = mqtt.Client()
+            self.client = mqtt.Client(client_id=f"{NODE_ID}_pi")
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
             self.client.tls_set(
