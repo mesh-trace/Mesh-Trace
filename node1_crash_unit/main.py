@@ -1,12 +1,12 @@
 import time
-from datetime import datetime, timezone
+import socket
+from datetime import datetime, timezone, timedelta
 from collections import deque
 
 from .config import (
     NODE_ID,
     SAMPLE_RATE,
     PRE_CRASH_DURATION,
-    IMPACT_THRESHOLD,
     AWS_CA_CERT,
     AWS_DEVICE_CERT,
     AWS_PRIVATE_KEY
@@ -21,10 +21,33 @@ from .sensors.gps import GPSSensor
 from .storage.blackbox_logger import BlackboxLogger
 from .cloud.mqtt_client import AWSIoTPublisher
 
+from .lora.lora_tx import LoRaCrashTX
+
+
+
+# TIMEZONE (IST)
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+# NETWORK CHECK
+
+def is_network_available(host="8.8.8.8", port=53, timeout=2):
+    try:
+        socket.setdefaulttimeout(timeout)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        sock.close()
+        return True
+    except Exception:
+        return False
+
+
+# CRASH DETECTION UNIT
 
 class CrashDetectionUnit:
     def __init__(self):
-        print("Initializing Crash Detection Unit...")
+        print("Initializing Mesh-Trace Crash Detection Unit...")
 
         # Sensors
         self.mpu6050 = MPU6050()
@@ -32,7 +55,7 @@ class CrashDetectionUnit:
         self.temperature_sensor = TemperatureSensor()
         self.gps_sensor = GPSSensor()
 
-        # Cache last valid GPS fix ✅
+        # GPS cache
         self.last_known_gps = None
 
         # Cloud
@@ -44,6 +67,9 @@ class CrashDetectionUnit:
             }
         )
 
+        # LoRa
+        self.lora_tx = LoRaCrashTX()
+
         # Blackbox
         self.blackbox = BlackboxLogger()
 
@@ -52,20 +78,17 @@ class CrashDetectionUnit:
             maxlen=PRE_CRASH_DURATION * SAMPLE_RATE
         )
 
-        print("Crash Detection Unit initialized successfully")
+        print("System initialized successfully")
 
-    # --------------------------------------------------
-    # SENSOR COLLECTION
-    # --------------------------------------------------
+    # SENSOR READ
+
     def read_all_sensors(self):
         accel = self.mpu6050.read_acceleration()
         gyro = self.mpu6050.read_gyroscope()
-        impact = self.impact_sensor.read()
         temperature = self.temperature_sensor.read()
 
-        # ✅ GPS WITH CACHE (FIX)
+        # GPS with cache
         gps_raw = self.gps_sensor.get_position()
-
         if gps_raw and gps_raw.get("fix_quality", 0) > 0:
             self.last_known_gps = {
                 "latitude": gps_raw.get("latitude"),
@@ -75,84 +98,81 @@ class CrashDetectionUnit:
                 "fix_quality": gps_raw.get("fix_quality"),
             }
 
-        gps = self.last_known_gps
-
-        if gps:
-            print(f"[DEBUG] Using GPS lat={gps['latitude']}, lon={gps['longitude']}")
-        else:
-            print("[DEBUG] GPS not fixed yet")
-
-        sensor_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+        return {
+            "timestamp": datetime.now(IST).isoformat(),
             "node_id": NODE_ID,
-            "impact": impact,
             "accelerometer": accel,
             "gyroscope": gyro,
             "temperature": temperature,
-            "gps": gps
+            "gps": self.last_known_gps
         }
 
-        return sensor_data
+    # CRASH CORRELATION (MPU6050 + SW420)
 
-    # --------------------------------------------------
-    # CRASH DETECTION
-    # --------------------------------------------------
     def detect_crash(self, sensor_data):
         accel = sensor_data.get("accelerometer")
-        impact = sensor_data.get("impact")
-
         if not accel:
-            return False, 0.0
+            return False, None, None
 
-        ax = accel["x"]
-        ay = accel["y"]
-        az = accel["z"]
+        ax, ay, az = accel["x"], accel["y"], accel["z"]
+        accel_mag = (ax ** 2 + ay ** 2 + az ** 2) ** 0.5
 
-        accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
-        print(f"[DEBUG] accel_mag = {accel_mag:.2f} m/s²")
+        print(f"[DEBUG] Accel magnitude: {accel_mag:.2f} m/s²")
 
-        if accel_mag >= IMPACT_THRESHOLD or impact:
-            return True, 0.95
+        impact_confirmed = self.impact_sensor.detect_impact(
+            accel_magnitude=accel_mag,
+            timestamp=time.time()
+        )
 
-        return False, 0.0
+        if not impact_confirmed:
+            return False, None, None
 
-    # --------------------------------------------------
+        # Severity logic
+        if accel_mag < 15:
+            severity = "LOW"
+        elif accel_mag < 25:
+            severity = "MEDIUM"
+        else:
+            severity = "HIGH"
+
+        return True, severity, accel_mag
+
     # HANDLE CRASH
-    # --------------------------------------------------
-    def handle_crash(self, sensor_data, confidence):
+
+    def handle_crash(self, sensor_data, severity, accel_mag):
         gps = sensor_data.get("gps")
 
-        location = {
-            "latitude": gps["latitude"],
-            "longitude": gps["longitude"]
-        } if gps else None
-
-        severity = "HIGH"
-
         crash_payload = {
-            "alert": "VEHICLE CRASH DETECTED",
+            "alert": "VEHICLE_CRASH_DETECTED",
             "node_id": NODE_ID,
             "severity": severity,
-            "confidence": confidence,
-            "location": location,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "acceleration_magnitude": round(accel_mag, 2),
+            "location": {
+                "latitude": gps["latitude"],
+                "longitude": gps["longitude"]
+            } if gps else None,
+            "timestamp": datetime.now(IST).isoformat(),
             "crash_data": sensor_data,
             "pre_crash_buffer": list(self.data_buffer)
         }
 
-        print("[DEBUG] Crash payload GPS:", location)
-
-        try:
-            self.cloud_client.publish(crash_payload)
-            print("Crash alert sent to cloud")
-        except Exception as e:
-            print("Cloud publish failed:", e)
-
+        # Always log locally
         self.blackbox.log_crash(crash_payload)
 
-    # --------------------------------------------------
+        if is_network_available():
+            print("[INFO] Network available → sending to AWS IoT")
+            try:
+                self.cloud_client.publish(crash_payload)
+                print("[SUCCESS] Crash sent to AWS IoT")
+            except Exception as e:
+                print("[ERROR] AWS publish failed, falling back to LoRa:", e)
+                self.lora_tx.send_payload(crash_payload)
+        else:
+            print("[WARN] No network → sending crash via LoRa relay")
+            self.lora_tx.send_payload(crash_payload)
+
     # MAIN LOOP
-    # --------------------------------------------------
+
     def run(self):
         print("Starting crash detection loop...")
         interval = 1 / SAMPLE_RATE
@@ -164,11 +184,11 @@ class CrashDetectionUnit:
                 self.blackbox.log(sensor_data, log_type="sensor")
                 self.data_buffer.append(sensor_data)
 
-                is_crash, confidence = self.detect_crash(sensor_data)
+                is_crash, severity, accel_mag = self.detect_crash(sensor_data)
 
                 if is_crash:
-                    print("🚨 CRASH DETECTED 🚨")
-                    self.handle_crash(sensor_data, confidence)
+                    print(f"🚨 CRASH DETECTED | Severity: {severity}")
+                    self.handle_crash(sensor_data, severity, accel_mag)
                     time.sleep(5)
 
                 time.sleep(interval)
@@ -177,9 +197,8 @@ class CrashDetectionUnit:
             print("Shutting down gracefully...")
             self.cleanup()
 
-    # --------------------------------------------------
     # CLEANUP
-    # --------------------------------------------------
+
     def cleanup(self):
         try:
             self.mpu6050.cleanup()
@@ -195,11 +214,13 @@ class CrashDetectionUnit:
         print("Resources cleaned up")
 
 
+# ENTRY POINT
 def main():
-    print("=" * 50)
+    print("=" * 60)
     print("Mesh-Trace | Node-1 Crash Detection Unit")
     print("Raspberry Pi Zero WH")
-    print("=" * 50)
+    print("Timezone: IST (UTC +05:30)")
+    print("=" * 60)
 
     unit = CrashDetectionUnit()
     unit.run()
