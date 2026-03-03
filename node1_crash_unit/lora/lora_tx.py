@@ -58,24 +58,17 @@ class LoRaCrashTX(LoRa):
 
         logger.info("LoRa Crash TX initialized")
 
-    def encrypt_payload(self, data: str):
-        logger.debug("Encrypting payload: len=%d", len(data))
-        iv = get_random_bytes(16) # pyright: ignore[reportUnknownReturnType]
-        cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv) # pyright: ignore[reportUnknownReturnType]
+        def encrypt_payload(self, data: str):
+            logger.debug("Encrypting payload (AES only): len=%d", len(data))
 
-        # PKCS7 padding
-        data_bytes = data.encode()
-        pad_len = 16 - (len(data_bytes) % 16)
-        padded = data_bytes + bytes([pad_len] * pad_len)
-        encrypted = cipher.encrypt(padded) # pyright: ignore[reportUnknownReturnType]
-
-        # HMAC
-        mac = hmac.new(SECRET_KEY, iv + encrypted, hashlib.sha256).digest() # pyright: ignore[reportUnknownReturnType]
-
-        final_packet = iv + mac + encrypted
-        encoded = base64.b64encode(final_packet).decode()
-        logger.debug("Encryption complete: output_len=%d", len(encoded))
-        return encoded
+            iv = get_random_bytes(16)
+            cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
+            data_bytes = data.encode()
+            pad_len = 16 - (len(data_bytes) % 16)
+            padded = data_bytes + bytes([pad_len] * pad_len)
+            encrypted = cipher.encrypt(padded)
+            final_packet = iv + encrypted
+            return final_packet  # RETURN RAW BYTES (NOT BASE64)
  
 
     def send_payload(self, payload_dict):
@@ -87,7 +80,7 @@ class LoRaCrashTX(LoRa):
             secure_payload = self.encrypt_payload(payload_json)
             logger.debug("Writing %d bytes to LoRa radio", len(secure_payload))
 
-            self.write_payload([ord(c) for c in secure_payload])
+            self.write_payload(list(secure_payload))
             self.set_mode(MODE.TX)
             logger.debug("TX mode set, waiting 0.5s for transmission")
 
