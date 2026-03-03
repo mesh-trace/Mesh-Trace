@@ -13,6 +13,8 @@ from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 key_hex = os.getenv("LORA_SECRET_KEY")
 
