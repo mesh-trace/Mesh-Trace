@@ -74,25 +74,32 @@ class LoRaCrashTX(LoRa):
  
 
     def send_payload(self, payload_dict):
+
         payload_json = json.dumps(payload_dict)
-        logger.info("Sending crash payload via LoRa: node_id=%s severity=%s", payload_dict.get("node_id"), payload_dict.get("severity"))
-        logger.debug("Payload JSON: %s", payload_json[:200] + "..." if len(payload_json) > 200 else payload_json)
+        secure_payload = self.encrypt_payload(payload_json)
+        logger.debug("Writing %d bytes to LoRa radio", len(secure_payload))
 
-        try:
-            secure_payload = self.encrypt_payload(payload_json)
-            logger.debug("Writing %d bytes to LoRa radio", len(secure_payload))
+        logger.debug("Transmitting packet...")
 
-            self.write_payload(list(secure_payload))
-            self.set_mode(MODE.TX)
-            logger.debug("TX mode set, waiting 0.5s for transmission")
+        self.set_mode(MODE.STDBY)
 
-            time.sleep(0.5)
-            self.set_mode(MODE.STDBY)
+        self.clear_irq_flags(RxDone=1, TxDone=1)
 
-            logger.info("Crash payload transmitted via LoRa successfully")
-        except Exception as e:
-            logger.error("LoRa transmission failed: %s", e, exc_info=True)
-            raise
+        self.write_payload(list(secure_payload))
+
+        self.set_mode(MODE.TX)
+
+        # Wait until transmission finishes
+        while True:
+            irq_flags = self.get_irq_flags()
+            if irq_flags.get('tx_done'):
+                break
+
+        self.clear_irq_flags(TxDone=1)
+
+        self.set_mode(MODE.STDBY)
+
+        logger.debug("Transmission complete.")
 
 
 if __name__ == "__main__":
