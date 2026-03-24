@@ -95,6 +95,10 @@ class CrashDetectionUnit:
         self.data_buffer = deque(maxlen=buffer_size)
         logger.debug("Pre-crash buffer size: %d samples (%.1f s)", buffer_size, PRE_CRASH_DURATION)
 
+        # Periodic cloud telemetry (wall clock)
+        self.telemetry_interval = 240
+        self.last_telemetry_time = time.time()
+
         logger.info("System initialized successfully")
 
     # SENSOR READ
@@ -208,6 +212,27 @@ class CrashDetectionUnit:
             logger.warning("No network → sending crash via LoRa relay")
             self.lora_tx.send_payload(crash_payload)
 
+    def send_periodic_telemetry(self, sensor_data):
+        try:
+            payload = {
+                "type": "LIVE_TELEMETRY",
+                "node_id": NODE_ID,
+                "timestamp": datetime.now(IST).isoformat(),
+                "temperature": sensor_data["temperature"],
+                "accelerometer": sensor_data["accelerometer"],
+                "gyroscope": sensor_data["gyroscope"],
+                "gps": sensor_data["gps"],
+            }
+            if not is_network_available():
+                logger.warning("Periodic telemetry skipped: network unavailable")
+                return
+            if self.cloud_client.safe_publish(payload):
+                logger.info("Periodic telemetry published successfully")
+            else:
+                logger.warning("Periodic telemetry publish failed")
+        except Exception as e:
+            logger.warning("Periodic telemetry error (suppressed): %s", e, exc_info=True)
+
     # MAIN LOOP
 
     def run(self):
@@ -217,6 +242,7 @@ class CrashDetectionUnit:
 
         try:
             while True:
+                current_time = time.time()
                 loop_count += 1
                 logger.debug("Loop iteration %d", loop_count)
 
@@ -233,6 +259,10 @@ class CrashDetectionUnit:
                     self.handle_crash(sensor_data, severity, accel_mag)
                     logger.debug("Post-crash cooldown: sleeping 5s")
                     time.sleep(5)
+
+                if current_time - self.last_telemetry_time >= self.telemetry_interval:
+                    self.send_periodic_telemetry(sensor_data)
+                    self.last_telemetry_time = current_time
 
                 time.sleep(interval)
 
