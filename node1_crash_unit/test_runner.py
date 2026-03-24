@@ -5,8 +5,8 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import cloud.mqtt_client as mqtt_client_module
-from cloud.mqtt_client import AWSIoTPublisher
-from config import (
+from .cloud.mqtt_client import AWSIoTPublisher
+from .config import (
     AWS_CA_CERT,
     AWS_DEVICE_CERT,
     AWS_PRIVATE_KEY,
