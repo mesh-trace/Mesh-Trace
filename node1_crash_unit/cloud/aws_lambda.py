@@ -104,10 +104,11 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         dict: Processing result
     """
     try:
-        crash_data = payload.get('data', {})
+        crash_data = payload.get('data', {})           # FIX 1: was 'data' all along — edge now sends correct key
         node_id = payload.get('node_id', 'unknown')
         timestamp = payload.get('timestamp', datetime.now().isoformat())
-        logger.info("process_crash_alert: node_id=%s timestamp=%s", node_id, timestamp)
+        severity = payload.get('severity', 'UNKNOWN')  # FIX 2: read severity from top-level payload
+        logger.info("process_crash_alert: node_id=%s timestamp=%s severity=%s", node_id, timestamp, severity)
 
         # Store in S3 (no hash/encryption; sensor testing + cloud hopping only)
         s3_key = f"crashes/{node_id}/{timestamp}.json"
@@ -132,7 +133,9 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
                 'node_id': node_id,
                 'timestamp': timestamp,
                 's3_key': s3_key,
-                'severity': crash_data.get('confidence', 0.0),
+                'severity': severity,                  # FIX 3: was crash_data.get('confidence') — always 0
+                'acceleration_magnitude': str(payload.get('acceleration_magnitude', 0.0)),
+                'location': json.dumps(payload.get('location')),
                 'processed_at': datetime.now().isoformat(),
                 'status': 'processed'
             }
@@ -141,21 +144,25 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         # Send alert notification
         location = payload.get("location")
-        logger.debug("Sending SNS notification: topic=%s", SNS_TOPIC_ARN)
-        sns_message = {
-            'alert_type': 'crash_detected',
-            'node_id': node_id,
-            'timestamp': timestamp,
-            'confidence': crash_data.get('confidence', 0.0),
-            'location': location,
-            's3_location': f"s3://{S3_BUCKET}/{s3_key}"
-        }
-        
-        sns_client.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=f"Crash Alert: Node {node_id}",
-            Message=json.dumps(sns_message, indent=2)
-        )
+        if not SNS_TOPIC_ARN:                          # FIX 4: guard — crashes Lambda if ARN is None
+            logger.warning("SNS_TOPIC_ARN not set — skipping notification")
+        else:
+            logger.debug("Sending SNS notification: topic=%s", SNS_TOPIC_ARN)
+            sns_message = {
+                'alert_type': 'crash_detected',
+                'node_id': node_id,
+                'timestamp': timestamp,
+                'severity': severity,
+                'acceleration_magnitude': payload.get('acceleration_magnitude', 0.0),
+                'location': location,
+                's3_location': f"s3://{S3_BUCKET}/{s3_key}"
+            }
+            sns_client.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Subject=f"Crash Alert: Node {node_id} | Severity: {severity}",
+                Message=json.dumps(sns_message, indent=2)
+            )
+            logger.info("SNS notification sent")
         logger.info("Crash alert processed: Node %s at %s s3_key=%s", node_id, timestamp, s3_key)
 
         return {
@@ -204,20 +211,22 @@ def process_health_report(payload: Dict[str, Any]) -> Dict[str, Any]:
         logger.debug("Health overall_status=%s", overall_status)
         if overall_status in ['error', 'critical']:
             # Send alert for critical sensor issues
-            sns_message = {
-                'alert_type': 'sensor_health_issue',
-                'node_id': node_id,
-                'status': overall_status,
-                'timestamp': timestamp,
-                'issues': health_data.get('errors', [])
-            }
-            
-            sns_client.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Subject=f"Sensor Health Alert: Node {node_id}",
-                Message=json.dumps(sns_message, indent=2)
-            )
-            logger.info("SNS alert sent for critical health: node_id=%s status=%s", node_id, overall_status)
+            if not SNS_TOPIC_ARN:                      # FIX: guard — crashes Lambda if ARN is None
+                logger.warning("SNS_TOPIC_ARN not set — skipping health alert notification")
+            else:
+                sns_message = {
+                    'alert_type': 'sensor_health_issue',
+                    'node_id': node_id,
+                    'status': overall_status,
+                    'timestamp': timestamp,
+                    'issues': health_data.get('errors', [])
+                }
+                sns_client.publish(
+                    TopicArn=SNS_TOPIC_ARN,
+                    Subject=f"Sensor Health Alert: Node {node_id}",
+                    Message=json.dumps(sns_message, indent=2)
+                )
+                logger.info("SNS alert sent for critical health: node_id=%s status=%s", node_id, overall_status)
 
         logger.info("Health report processed: node_id=%s", node_id)
         return {

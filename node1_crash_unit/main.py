@@ -173,7 +173,15 @@ class CrashDetectionUnit:
         logger.info("handle_crash: severity=%s accel_mag=%.2f", severity, accel_mag)
         gps = sensor_data.get("gps")
 
+        # Guard: gps dict can exist but have None coordinates (no fix yet)
+        has_gps_fix = (
+            gps is not None
+            and gps.get("latitude") is not None
+            and gps.get("longitude") is not None
+        )
+
         crash_payload = {
+            "type": "crash_alert",                          # FIX 1: Lambda routes on this key
             "alert": "VEHICLE_CRASH_DETECTED",
             "node_id": NODE_ID,
             "severity": severity,
@@ -181,9 +189,9 @@ class CrashDetectionUnit:
             "location": {
                 "latitude": gps["latitude"],
                 "longitude": gps["longitude"]
-            } if gps else None,
+            } if has_gps_fix else None,                     # FIX 2: safe GPS guard
             "timestamp": datetime.now(IST).isoformat(),
-            "crash_data": sensor_data,
+            "data": sensor_data,                            # FIX 3: renamed from "crash_data" → "data" to match Lambda
             "pre_crash_buffer": list(self.data_buffer)
         }
         # Detailed payload logging before send (for MQTT debug)
