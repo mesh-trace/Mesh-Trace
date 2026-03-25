@@ -27,15 +27,18 @@ from SX127x.constants import MODE  # pyright: ignore[reportMissingImports]
 #        loading config.py from the parent directory using importlib
 # ---------------------------------------------------------------------------
 try:
-    from ..config import LORA_FREQUENCY, LORA_POWER
+    from ..config import LORA_FREQUENCY, LORA_POWER, LORA_SPREADING_FACTOR, LORA_BANDWIDTH, LORA_CODING_RATE
 except ImportError:
     import importlib.util
     _config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config.py"))
     _spec = importlib.util.spec_from_file_location("config", _config_path)
     _config = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_config)
-    LORA_FREQUENCY = _config.LORA_FREQUENCY
-    LORA_POWER     = _config.LORA_POWER
+    LORA_FREQUENCY        = _config.LORA_FREQUENCY
+    LORA_POWER            = _config.LORA_POWER
+    LORA_SPREADING_FACTOR = _config.LORA_SPREADING_FACTOR
+    LORA_BANDWIDTH        = _config.LORA_BANDWIDTH
+    LORA_CODING_RATE      = _config.LORA_CODING_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +51,34 @@ class LoRaCrashTX(LoRa):
         self.set_mode(MODE.STDBY)
         self.set_freq(LORA_FREQUENCY)
 
+        # ----------------------------------------------------------------
+        # Radio parameters — ALL four must match exactly on the ESP32 side.
+        # Defaults in config.py:
+        #   LORA_SPREADING_FACTOR = 7   (SF7)
+        #   LORA_BANDWIDTH        = 125000  (125 kHz  → BW_125)
+        #   LORA_CODING_RATE      = 5   (4/5)
+        #   Sync word             = 0x12 (private network, matches ESP32 setSpreadingFactor default)
+        # ----------------------------------------------------------------
+        from ..config import LORA_SPREADING_FACTOR, LORA_BANDWIDTH, LORA_CODING_RATE
+
+        # Map bandwidth Hz value to SX127x register constant
+        BW_MAP = {
+            7800:   0,  10400: 1, 15600:  2, 20800: 3,
+            31250:  4,  41700: 5, 62500:  6, 125000: 7,
+            250000: 8, 500000: 9
+        }
+        bw_reg = BW_MAP.get(LORA_BANDWIDTH, 7)   # default 125 kHz
+        self.set_bw(bw_reg)
+        self.set_spreading_factor(LORA_SPREADING_FACTOR)
+        self.set_coding_rate(LORA_CODING_RATE)
+        self.set_sync_word(0x12)    # 0x12 = private LoRa network (must match ESP32)
+
         self.set_pa_config(pa_select=1, max_power=0x70, output_power=0x0F)
 
-        logger.info("LoRa Crash TX initialized: freq=%.1f MHz", LORA_FREQUENCY)
+        logger.info(
+            "LoRa Crash TX initialized: freq=%.1f MHz  SF=%d  BW=%d Hz  CR=4/%d  sync=0x12",
+            LORA_FREQUENCY, LORA_SPREADING_FACTOR, LORA_BANDWIDTH, LORA_CODING_RATE
+        )
 
     def send_payload(self, payload_dict):
         payload_json = json.dumps(payload_dict)
