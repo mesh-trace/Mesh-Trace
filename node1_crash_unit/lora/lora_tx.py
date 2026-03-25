@@ -53,13 +53,13 @@ class LoRaCrashTX(LoRa):
 
         # ----------------------------------------------------------------
         # Radio parameters — ALL four must match exactly on the ESP32 side.
-        # Defaults in config.py:
+        # Values come from config.py (loaded at module level above, works
+        # whether run as a package or directly with python3 lora_tx.py).
         #   LORA_SPREADING_FACTOR = 7   (SF7)
         #   LORA_BANDWIDTH        = 125000  (125 kHz  → BW_125)
         #   LORA_CODING_RATE      = 5   (4/5)
-        #   Sync word             = 0x12 (private network, matches ESP32 setSpreadingFactor default)
+        #   Sync word             = 0x12 (private network, must match ESP32)
         # ----------------------------------------------------------------
-        from ..config import LORA_SPREADING_FACTOR, LORA_BANDWIDTH, LORA_CODING_RATE
 
         # Map bandwidth Hz value to SX127x register constant
         BW_MAP = {
