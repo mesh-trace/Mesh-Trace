@@ -86,11 +86,29 @@ class LoRaCrashTX(LoRa):
         logger.info("Sending LoRa crash payload: %d bytes", len(payload_json))
         logger.debug("LoRa payload: %s", payload_json)
 
+        # Write payload bytes to FIFO buffer, then trigger TX
         self.write_payload([ord(c) for c in payload_json])
+
+        # Clear all IRQ flags before TX so we can detect TxDone cleanly
+        self.set_irq_flags(tx_done=1)
+
         self.set_mode(MODE.TX)
 
-        time.sleep(0.5)
+        # Wait for TxDone IRQ flag — poll register 0x12 bit 3
+        # Timeout = 5 seconds (well above worst-case SF12 airtime)
+        timeout = time.time() + 5.0
+        while True:
+            irq = self.get_irq_flags()
+            if irq.get("tx_done"):
+                break
+            if time.time() > timeout:
+                logger.error("LoRa TX timeout — TxDone flag never set")
+                break
+            time.sleep(0.01)
+
+        # Return to standby and clear flags
         self.set_mode(MODE.STDBY)
+        self.set_irq_flags(tx_done=1)
 
         logger.info("LoRa crash payload transmitted successfully")
 
