@@ -18,7 +18,24 @@ from SX127x.LoRa import LoRa  # pyright: ignore[reportMissingImports]
 from SX127x.board_config import BOARD  # pyright: ignore[reportMissingImports]
 from SX127x.constants import MODE  # pyright: ignore[reportMissingImports]
 
-from ..config import LORA_FREQUENCY, LORA_POWER   # reads LORA_FREQUENCY from .env — must be 433.0 to match ESP32
+# ---------------------------------------------------------------------------
+# Import config — works in BOTH modes:
+#   1. Run as part of the package:  python3 -m node1_crash_unit.main
+#      → relative import succeeds normally
+#   2. Run directly as a script:    python3 lora_tx.py
+#      → relative import fails (no parent package), so we fall back to
+#        loading config.py from the parent directory using importlib
+# ---------------------------------------------------------------------------
+try:
+    from ..config import LORA_FREQUENCY, LORA_POWER
+except ImportError:
+    import importlib.util
+    _config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config.py"))
+    _spec = importlib.util.spec_from_file_location("config", _config_path)
+    _config = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_config)
+    LORA_FREQUENCY = _config.LORA_FREQUENCY
+    LORA_POWER     = _config.LORA_POWER
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +46,16 @@ class LoRaCrashTX(LoRa):
         super().__init__(verbose=False)
 
         self.set_mode(MODE.STDBY)
-        self.set_freq(LORA_FREQUENCY)                  # FIX: was hardcoded 433.0, now reads from config
+        self.set_freq(LORA_FREQUENCY)
 
         self.set_pa_config(pa_select=1, max_power=0x70, output_power=0x0F)
 
-        logger.info("LoRa Crash TX initialized: freq=%.1f MHz", LORA_FREQUENCY)  # FIX: use logger not print
+        logger.info("LoRa Crash TX initialized: freq=%.1f MHz", LORA_FREQUENCY)
 
     def send_payload(self, payload_dict):
         payload_json = json.dumps(payload_dict)
 
-        logger.info("Sending LoRa crash payload: %d bytes", len(payload_json))  # FIX: use logger not print
+        logger.info("Sending LoRa crash payload: %d bytes", len(payload_json))
         logger.debug("LoRa payload: %s", payload_json)
 
         self.write_payload([ord(c) for c in payload_json])
@@ -47,13 +64,18 @@ class LoRaCrashTX(LoRa):
         time.sleep(0.5)
         self.set_mode(MODE.STDBY)
 
-        logger.info("LoRa crash payload transmitted successfully")              # FIX: use logger not print
+        logger.info("LoRa crash payload transmitted successfully")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     lora = LoRaCrashTX()
 
-    # Example crash payload (this will come from main.py later)
     crash_payload = {
         "alert": "VEHICLE_CRASH_DETECTED",
         "node_id": "mesh-trace-node-001",
