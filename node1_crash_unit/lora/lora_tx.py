@@ -18,7 +18,7 @@ from SX127x.LoRa import LoRa  # pyright: ignore[reportMissingImports]
 from SX127x.board_config import BOARD  # pyright: ignore[reportMissingImports]
 from SX127x.constants import MODE  # pyright: ignore[reportMissingImports]
 
-from ..config import LORA_FREQUENCY, LORA_POWER   # FIX: use config values, not hardcoded
+from ..config import LORA_FREQUENCY, LORA_POWER   # reads LORA_FREQUENCY from .env — must be 433.0 to match ESP32
 
 logger = logging.getLogger(__name__)
 
