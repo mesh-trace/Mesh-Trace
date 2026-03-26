@@ -47,10 +47,10 @@ GPS_BAUDRATE = int(os.getenv('GPS_BAUDRATE', '9600'))
 # ACCELERATION_DELTA_THRESHOLD: minimum SUDDEN CHANGE vs recent baseline
 #   Prevents gravity (constant 9.8) from falsely triggering. Default: 8.0
 # CRASH_COOLDOWN: seconds between crash alerts (prevents repeat-fire). Default: 30
-IMPACT_THRESHOLD            = float(os.getenv('IMPACT_THRESHOLD',            '15.0'))
-ACCELERATION_THRESHOLD      = float(os.getenv('ACCELERATION_THRESHOLD',      '15.0'))
-ACCELERATION_DELTA_THRESHOLD= float(os.getenv('ACCELERATION_DELTA_THRESHOLD', '8.0'))
-CRASH_COOLDOWN_SECONDS      = int(os.getenv('CRASH_COOLDOWN_SECONDS',          '30'))
+IMPACT_THRESHOLD            = float(os.getenv('IMPACT_THRESHOLD',            '6.0'))
+ACCELERATION_THRESHOLD      = float(os.getenv('ACCELERATION_THRESHOLD',      '5.0'))
+ACCELERATION_DELTA_THRESHOLD= float(os.getenv('ACCELERATION_DELTA_THRESHOLD', '3.0'))
+CRASH_COOLDOWN_SECONDS      = int(os.getenv('CRASH_COOLDOWN_SECONDS',          '10'))
 
 # Monitoring telemetry interval (seconds) — sensor data sent to AWS for dashboard
 TELEMETRY_INTERVAL = int(os.getenv('TELEMETRY_INTERVAL', '60'))
