@@ -41,9 +41,19 @@ TEMPERATURE_SENSOR_PIN = int(os.getenv('TEMPERATURE_SENSOR_PIN', '4'))
 GPS_SERIAL_PORT = os.getenv('GPS_SERIAL_PORT', '/dev/ttyS0')
 GPS_BAUDRATE = int(os.getenv('GPS_BAUDRATE', '9600'))
 
-# Crash Detection Thresholds (threshold-based, no AI)
-IMPACT_THRESHOLD = float(os.getenv('IMPACT_THRESHOLD', '11.0'))
-ACCELERATION_THRESHOLD = float(os.getenv('ACCELERATION_THRESHOLD', '9.8'))
+# Crash Detection Thresholds
+# ACCELERATION_THRESHOLD: absolute minimum m/s² to even consider a crash
+#   Must be well above gravity (9.8 m/s²). Real crash = 15+ m/s². Default: 15.0
+# ACCELERATION_DELTA_THRESHOLD: minimum SUDDEN CHANGE vs recent baseline
+#   Prevents gravity (constant 9.8) from falsely triggering. Default: 8.0
+# CRASH_COOLDOWN: seconds between crash alerts (prevents repeat-fire). Default: 30
+IMPACT_THRESHOLD            = float(os.getenv('IMPACT_THRESHOLD',            '15.0'))
+ACCELERATION_THRESHOLD      = float(os.getenv('ACCELERATION_THRESHOLD',      '15.0'))
+ACCELERATION_DELTA_THRESHOLD= float(os.getenv('ACCELERATION_DELTA_THRESHOLD', '8.0'))
+CRASH_COOLDOWN_SECONDS      = int(os.getenv('CRASH_COOLDOWN_SECONDS',          '30'))
+
+# Monitoring telemetry interval (seconds) — sensor data sent to AWS for dashboard
+TELEMETRY_INTERVAL = int(os.getenv('TELEMETRY_INTERVAL', '60'))
 
 # Sampling Configuration
 SAMPLE_RATE = int(os.getenv('SAMPLE_RATE', '100'))
@@ -51,7 +61,7 @@ BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '1000'))
 PRE_CRASH_DURATION = int(os.getenv('PRE_CRASH_DURATION', '5'))
 
 # LoRa Configuration
-LORA_FREQUENCY = float(os.getenv('LORA_FREQUENCY', '433.0'))
+LORA_FREQUENCY = float(os.getenv('LORA_FREQUENCY', '915.0'))
 LORA_SPREADING_FACTOR = int(os.getenv('LORA_SPREADING_FACTOR', '7'))
 LORA_BANDWIDTH = int(os.getenv('LORA_BANDWIDTH', '125000'))
 LORA_CODING_RATE = int(os.getenv('LORA_CODING_RATE', '5'))

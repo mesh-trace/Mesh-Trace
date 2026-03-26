@@ -95,8 +95,8 @@ class CrashDetectionUnit:
         self.data_buffer = deque(maxlen=buffer_size)
         logger.debug("Pre-crash buffer size: %d samples (%.1f s)", buffer_size, PRE_CRASH_DURATION)
 
-        # Periodic cloud telemetry (wall clock)
-        self.telemetry_interval = 240
+        # Periodic monitoring data — sent every 60s to AWS for dashboard
+        self.telemetry_interval = 60
         self.last_telemetry_time = time.time()
 
         logger.info("System initialized successfully")
@@ -221,21 +221,37 @@ class CrashDetectionUnit:
             self.lora_tx.send_payload(crash_payload)
 
     def send_periodic_telemetry(self, sensor_data):
+        """
+        Send a full sensor snapshot to AWS every 60 seconds for dashboard monitoring.
+        Includes accelerometer, GPS, temperature, and node health.
+        """
         try:
+            accel = sensor_data.get("accelerometer", {})
+            ax = accel.get("x", 0)
+            ay = accel.get("y", 0)
+            az = accel.get("z", 0)
+            accel_mag = round((ax**2 + ay**2 + az**2) ** 0.5, 3)
+
             payload = {
                 "type": "LIVE_TELEMETRY",
                 "node_id": NODE_ID,
                 "timestamp": datetime.now(IST).isoformat(),
-                "temperature": sensor_data["temperature"],
-                "accelerometer": sensor_data["accelerometer"],
-                "gyroscope": sensor_data["gyroscope"],
-                "gps": sensor_data["gps"],
+                "accelerometer": sensor_data.get("accelerometer"),
+                "acceleration_magnitude": accel_mag,
+                "gyroscope": sensor_data.get("gyroscope"),
+                "temperature": sensor_data.get("temperature"),
+                "gps": sensor_data.get("gps"),
             }
             if not is_network_available():
                 logger.warning("Periodic telemetry skipped: network unavailable")
                 return
             if self.cloud_client.safe_publish(payload):
-                logger.info("Periodic telemetry published successfully")
+                logger.info(
+                    "Periodic telemetry published: accel_mag=%.2f gps=%s temp=%s",
+                    accel_mag,
+                    f"{sensor_data.get('gps', {}).get('latitude', 'N/A')},{sensor_data.get('gps', {}).get('longitude', 'N/A')}" if sensor_data.get('gps') else "no fix",
+                    sensor_data.get("temperature", {}).get("temperature")
+                )
             else:
                 logger.warning("Periodic telemetry publish failed")
         except Exception as e:

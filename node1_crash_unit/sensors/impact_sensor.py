@@ -9,7 +9,7 @@ from collections import deque
 from typing import Optional, List
 
 try:
-    import RPi.GPIO as GPIO
+    import RPi.GPIO as GPIO  # pyright: ignore[reportMissingModuleSource]
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
@@ -34,10 +34,12 @@ class ImpactSensor:
     """
     
     def __init__(self, pins: Optional[List[int]] = None, pin: Optional[int] = None,
-                 accel_threshold: float = 7.0,  # m/s² threshold for impact confirmation
-                 correlation_window: float = 0.2,  # seconds (200ms window)
-                 debounce_time: float = 0.05,  # seconds (50ms debounce)
-                 cooldown_time: float = 1.0):  # seconds (1s cooldown between impacts)
+                 accel_threshold: float = 15.0,  # m/s² — must be well above gravity (9.8 m/s²)
+                 delta_threshold: float = 8.0,   # m/s² — minimum SUDDEN CHANGE vs recent baseline
+                 correlation_window: float = 0.5, # seconds — window to correlate SB420 + accel
+                 debounce_time: float = 0.05,     # seconds (50ms debounce)
+                 cooldown_time: float = 30.0,     # seconds — no re-trigger for 30s after crash
+                 baseline_window: int = 20):      # samples — rolling window to compute baseline
         """
         Initialize impact sensor system with multiple SB420 sensors
         
@@ -62,32 +64,52 @@ class ImpactSensor:
             logger.warning(f"More than 4 pins provided, using first 4: {self.pins[:4]}")
             self.pins = self.pins[:4]
         
-        self.accel_threshold = accel_threshold
-        self.correlation_window = correlation_window
-        self.debounce_time = debounce_time
-        self.cooldown_time = cooldown_time
+
         
         # GPIO state
         self.gpio_initialized = False
         self.gpio_mode_set = False
         
+        self.accel_threshold  = accel_threshold
+        self.delta_threshold  = delta_threshold
+        self.correlation_window = correlation_window
+        self.debounce_time    = debounce_time
+        self.cooldown_time    = cooldown_time
+        self.baseline_window  = baseline_window
+
         # Sensor fusion state tracking
-        self.sb420_triggers = deque(maxlen=10)  # Recent SB420 trigger events: (timestamp, sensor_id)
-        self.last_impact_time = 0.0  # Timestamp of last confirmed impact
-        self.last_sb420_read_time = {}  # Track last read time per sensor for debouncing
+        self.sb420_triggers       = deque(maxlen=10)   # Recent SB420 trigger events
+        self.last_impact_time     = 0.0                # Timestamp of last confirmed impact
+        self.last_sb420_read_time = {}                 # Per-sensor debounce timestamps
+        self.accel_baseline         = deque(maxlen=baseline_window)  # Rolling baseline magnitudes
+        self._startup_ignore_until  = 0.0   # Ignore SB420 until this timestamp (startup drain)
         
         # Initialize GPIO if available
         if GPIO_AVAILABLE and self.pins:
             try:
+                GPIO.setwarnings(False)  # suppress "channel already in use" on restart
                 if not self.gpio_mode_set:
                     GPIO.setmode(GPIO.BCM)
                     self.gpio_mode_set = True
-                
+
                 for pin in self.pins:
                     GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
                     self.last_sb420_read_time[pin] = 0.0
-                
+
                 self.gpio_initialized = True
+
+                # Drain any stale HIGH states on startup — SB420 can latch HIGH after power-on
+                # Read and discard initial states before the main loop starts
+                time.sleep(0.1)
+                stale = [p for p in self.pins if GPIO.input(p)]
+                if stale:
+                    logger.warning(
+                        "SB420 startup drain: pins %s were HIGH at init — ignoring for 2s", stale
+                    )
+                    self._startup_ignore_until = time.time() + 2.0
+                else:
+                    self._startup_ignore_until = 0.0
+
                 logger.info(f"Initialized {len(self.pins)} SB420 impact sensors on pins: {self.pins}")
             except Exception as e:
                 logger.error(f"Error initializing GPIO pins: {e}")
@@ -107,12 +129,16 @@ class ImpactSensor:
             return triggers
         
         try:
+            # Skip if still in startup drain window
+            if current_time < self._startup_ignore_until:
+                return triggers
+
             for idx, pin in enumerate(self.pins):
                 # Debounce: ignore triggers too close together
                 last_read = self.last_sb420_read_time.get(pin, 0.0)
                 if current_time - last_read < self.debounce_time:
                     continue
-                
+
                 # Read digital state (HIGH = impact detected)
                 if GPIO.input(pin):
                     triggers.append((current_time, idx))
@@ -126,67 +152,70 @@ class ImpactSensor:
     
     def detect_impact(self, accel_magnitude: float, timestamp: Optional[float] = None) -> bool:
         """
-        Detect impact using sensor fusion: SB420 trigger + accelerometer magnitude correlation
-        
-        This is the main detection method that correlates SB420 digital triggers with
-        MPU6050 accelerometer data to reduce false positives from vibration/noise.
-        
-        Args:
-            accel_magnitude: Acceleration magnitude from MPU6050 in m/s²
-            timestamp: Optional timestamp (uses current time if not provided)
-        
-        Returns:
-            bool: True if impact is confirmed, False otherwise
-        
-        Detection Logic:
-        1. Check cooldown period (prevent duplicate triggers)
-        2. Read current SB420 sensor states
-        3. Store any SB420 triggers with timestamp
-        4. Correlate: Check if SB420 trigger exists within correlation window
-           AND accelerometer magnitude exceeds threshold
-        5. If both conditions met, confirm impact and log event
+        Detect a REAL crash using two-stage fusion:
+
+        Stage 1 — Sudden delta check:
+            Compute rolling baseline from recent samples (last ~20 readings ≈ last 20 loop cycles).
+            A crash produces a SUDDEN SPIKE above baseline, not a steady high value.
+            Normal gravity (~9.8 m/s²) always sits in the baseline → delta stays near zero → no trigger.
+            A real impact (e.g. 25 m/s²) spikes way above baseline (delta ~15 m/s²) → triggers.
+
+        Stage 2 — SB420 physical correlation:
+            Confirm that an SB420 sensor also fired within the correlation window.
+            Eliminates false positives from software glitches or slow vibration.
+
+        Stage 3 — Cooldown:
+            30s cooldown prevents duplicate alerts after a real crash.
         """
         if timestamp is None:
             timestamp = time.time()
-        
-        # Cooldown check: prevent duplicate impact detections
+
+        # --- Always update baseline with current reading (before cooldown check) ---
+        self.accel_baseline.append(accel_magnitude)
+
+        # --- Cooldown: ignore everything for 30s after a confirmed crash ---
         if timestamp - self.last_impact_time < self.cooldown_time:
             return False
-        
-        # Read current SB420 sensor states (non-blocking)
+
+        # --- Read and store SB420 triggers ---
         current_triggers = self._read_sb420_sensors()
-        
-        # Store new triggers
         for trigger_time, sensor_id in current_triggers:
             self.sb420_triggers.append((trigger_time, sensor_id))
-        
-        # Check if accelerometer magnitude exceeds threshold
-        accel_exceeds_threshold = accel_magnitude >= self.accel_threshold
-        
-        if not accel_exceeds_threshold:
+
+        # --- Stage 1: absolute threshold check ---
+        if accel_magnitude < self.accel_threshold:
+            logger.debug("detect_impact: accel %.2f below threshold %.2f — no crash",
+                         accel_magnitude, self.accel_threshold)
             return False
-        
-        # Correlation: Check if any SB420 trigger occurred within correlation window
-        # Look for triggers that happened close to current time (within window)
+
+        # --- Stage 2: sudden delta check vs rolling baseline ---
+        if len(self.accel_baseline) >= 5:
+            # Exclude the current reading from baseline average
+            recent = list(self.accel_baseline)[:-1]
+            baseline_avg = sum(recent) / len(recent)
+            delta = accel_magnitude - baseline_avg
+            logger.debug("detect_impact: accel=%.2f baseline=%.2f delta=%.2f (need delta>=%.2f)",
+                         accel_magnitude, baseline_avg, delta, self.delta_threshold)
+            if delta < self.delta_threshold:
+                # High accel but no sudden change — just gravity or slow vibration
+                return False
+
+        # --- Stage 3: SB420 correlation ---
         for trigger_time, sensor_id in self.sb420_triggers:
             time_diff = abs(timestamp - trigger_time)
-            
-            # Check if trigger is within correlation window
             if time_diff <= self.correlation_window:
-                # Both conditions met: SB420 triggered AND accelerometer exceeded threshold
-                # Confirm impact
                 self.last_impact_time = timestamp
-                
-                # Log impact event
+                baseline_avg = sum(self.accel_baseline) / len(self.accel_baseline) if self.accel_baseline else 0
                 logger.warning(
-                    f"IMPACT DETECTED: Sensor {sensor_id} (pin {self.pins[sensor_id]}), "
+                    f"CRASH CONFIRMED: Sensor {sensor_id} (pin {self.pins[sensor_id] if sensor_id < len(self.pins) else '?'}), "
                     f"Accel: {accel_magnitude:.2f} m/s², "
-                    f"Time diff: {time_diff*1000:.1f}ms, "
-                    f"Timestamp: {timestamp:.3f}"
+                    f"Baseline: {baseline_avg:.2f} m/s², "
+                    f"Delta: {accel_magnitude - baseline_avg:.2f} m/s², "
+                    f"SB420 time diff: {time_diff*1000:.1f}ms"
                 )
-                
                 return True
-        
+
+        logger.debug("detect_impact: accel exceeded threshold but no SB420 correlation")
         return False
     
     def read(self):
