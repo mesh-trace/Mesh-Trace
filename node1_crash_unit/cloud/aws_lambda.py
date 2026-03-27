@@ -26,7 +26,8 @@ sns_client = boto3.client('sns')
 # Configuration from environment variables
 S3_BUCKET = os.getenv('S3_BUCKET', 'mesh-trace-crash-archive-et8-sav')
 DYNAMODB_TABLE = os.getenv('DYNAMODB_TABLE', 'MeshTraceCrashTable')
-SNS_TOPIC_ARN = os.getenv('SNS_TOPIC_ARN')
+SNS_TOPIC_ARN       = os.getenv('SNS_TOPIC_ARN')
+NODE_STATUS_TABLE   = os.getenv('NODE_STATUS_TABLE', 'MeshTraceNodeStatus')
 
 
 def format_timestamp(iso_str: str) -> str:
@@ -78,13 +79,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.debug("Payload type=%s keys=%s", payload.get('type'), list(payload.keys()))
 
-        # Validate payload structure
+        # Normalise legacy payload — old edge firmware sends "alert" key with no "type"
         if 'type' not in payload:
-            logger.warning("Invalid payload: missing type field")
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': 'Invalid payload: missing type field'})
-            }
+            if payload.get('alert') == 'VEHICLE_CRASH_DETECTED':
+                logger.warning("Legacy payload detected (missing 'type') — auto-normalising to crash_alert")
+                payload['type']     = 'crash_alert'
+                payload.setdefault('data', {
+                    'accelerometer': payload.get('accelerometer'),
+                    'gps':           payload.get('gps'),
+                    'temperature':   payload.get('temperature'),
+                })
+                if 'severity' not in payload or payload['severity'] in (None, 'unknown', ''):
+                    payload['severity'] = 'UNKNOWN'
+            else:
+                logger.warning("Invalid payload: missing type field — keys=%s", list(payload.keys()))
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': 'Invalid payload: missing type field'})
+                }
 
         # Process based on message type
         if payload['type'] == 'crash_alert':
@@ -93,6 +105,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         elif payload['type'] == 'health_report':
             logger.info("Processing health_report")
             result = process_health_report(payload)
+        elif payload['type'] == 'node_status':
+            logger.info("Processing node_status")
+            result = process_node_status(payload)
         else:
             logger.warning("Unknown message type: %s", payload['type'])
             result = {
@@ -185,24 +200,70 @@ def process_crash_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "HIGH":   "High   (>25 m/s2)   — severe impact",
             }.get(severity, severity)
 
+            # Build sensor data summary from nested data field
+            data_block = payload.get('data', {})
+            accel_data = data_block.get('accelerometer') or payload.get('accelerometer') or {}
+            gps_data   = data_block.get('gps')           or payload.get('gps')
+
+            ax = accel_data.get('x', 0.0)
+            ay = accel_data.get('y', 0.0)
+            az = accel_data.get('z', 0.0)
+            if accel_mag == 0.0 and (ax or ay or az):
+                accel_mag = round((ax**2 + ay**2 + az**2) ** 0.5, 2)
+
+            sats = gps_data.get('satellites', 'N/A') if gps_data else 'N/A'
+            alt  = gps_data.get('altitude', 'N/A')  if gps_data else 'N/A'
+
+            severity_colour = {'LOW': '[ LOW ]', 'MEDIUM': '[ MEDIUM ]', 'HIGH': '[ HIGH ]'}.get(severity, f'[ {severity} ]')
+
             email_body = (
-                "MESH-TRACE CRASH ALERT\n"
-                "==============================================\n\n"
-                f"  Node      : {node_id}\n"
-                f"  Time      : {readable_time}\n"
-                f"  Severity  : {severity_desc}\n"
-                f"  Impact    : {accel_mag} m/s2\n"
-                f"  Location  : {location_str}\n\n"
-                "----------------------------------------------\n"
-                f"  S3 Record : s3://{S3_BUCKET}/{s3_key}\n"
-                "==============================================\n\n"
-                "This alert was generated automatically by the\n"
-                "Mesh-Trace crash detection system."
+                "================================================================\n"
+                "  MESH-TRACE  |  VEHICLE CRASH ALERT                           \n"
+                "================================================================\n"
+                "\n"
+                f"  {severity_colour} Crash event detected on node {node_id}\n"
+                "\n"
+                "----------------------------------------------------------------\n"
+                "  INCIDENT DETAILS\n"
+                "----------------------------------------------------------------\n"
+                f"  Date & Time   : {readable_time}\n"
+                f"  Severity      : {severity_desc}\n"
+                f"  Impact Force  : {accel_mag} m/s²\n"
+                f"  Node ID       : {node_id}\n"
+                "\n"
+                "----------------------------------------------------------------\n"
+                "  LOCATION\n"
+                "----------------------------------------------------------------\n"
+                f"  Coordinates   : {location_str}\n"
+                f"  GPS Satellites: {sats}\n"
+                f"  Altitude      : {alt} m\n"
+                "\n"
+                "----------------------------------------------------------------\n"
+                "  SENSOR READINGS AT IMPACT\n"
+                "----------------------------------------------------------------\n"
+                f"  Accel X       : {ax:.3f} m/s²\n"
+                f"  Accel Y       : {ay:.3f} m/s²\n"
+                f"  Accel Z       : {az:.3f} m/s²\n"
+                f"  Magnitude     : {accel_mag} m/s²\n"
+                "\n"
+                "----------------------------------------------------------------\n"
+                "  RECORD\n"
+                "----------------------------------------------------------------\n"
+                f"  S3 Archive    : s3://{S3_BUCKET}/{s3_key}\n"
+                f"  Processed At  : {datetime.now().strftime('%A, %d %B %Y  %I:%M:%S %p IST')}\n"
+                "\n"
+                "================================================================\n"
+                "  This is an automated alert from the Mesh-Trace crash         \n"
+                "  detection system. Do not reply to this email.                \n"
+                "  For support contact your system administrator.               \n"
+                "================================================================\n"
             )
+
+            subject_severity = {'LOW': 'LOW Severity', 'MEDIUM': 'MEDIUM Severity', 'HIGH': '*** HIGH SEVERITY ***'}.get(severity, severity)
 
             sns_client.publish(
                 TopicArn=SNS_TOPIC_ARN,
-                Subject=f"[Mesh-Trace] Crash Alert — {severity} — {node_id}",
+                Subject=f"[Mesh-Trace] Vehicle Crash Detected — {subject_severity} — Node {node_id}",
                 Message=email_body
             )
             logger.info("SNS notification sent")
@@ -293,6 +354,62 @@ def process_health_report(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error("Error processing health report: %s", e, exc_info=True)
+        raise
+
+
+def process_node_status(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process node status report (battery + uptime + connection quality).
+    Writes latest values to DynamoDB NODE_STATUS_TABLE.
+    The dashboard reads this table to display the Node Status widget.
+    Each node_id has exactly ONE record — we overwrite on every update
+    so the dashboard always shows the latest state.
+    """
+    try:
+        node_id   = payload.get('node_id', 'unknown')
+        timestamp = payload.get('timestamp', datetime.now().isoformat())
+        battery   = payload.get('battery', {})
+        logger.info("process_node_status: node_id=%s timestamp=%s", node_id, timestamp)
+
+        readable_time = format_timestamp(timestamp)
+
+        table = dynamodb.Table(NODE_STATUS_TABLE)
+        table.put_item(
+            Item={
+                # Partition key — one row per node, always overwritten with latest
+                'node_id':               node_id,
+                'timestamp':             timestamp,
+                'readable_time':         readable_time,
+
+                # Battery
+                'battery_pct':           str(battery.get('battery_pct', 0)),
+                'battery_voltage_v':     str(battery.get('voltage_v', 0.0)),
+                'battery_status':        battery.get('status', 'unknown'),
+
+                # Uptime
+                'uptime_seconds':        str(payload.get('uptime_seconds', 0)),
+                'uptime_hours':          str(payload.get('uptime_hours', 0.0)),
+
+                # Connection quality
+                'connection_quality_pct': str(payload.get('connection_quality_pct', 0)),
+                'mqtt_publish_count':     str(payload.get('mqtt_publish_count', 0)),
+
+                'updated_at': datetime.now().isoformat(),
+            }
+        )
+        logger.info("Node status written to DynamoDB: node_id=%s battery=%s%% uptime=%ss conn=%s%%",
+                    node_id,
+                    battery.get('battery_pct'),
+                    payload.get('uptime_seconds'),
+                    payload.get('connection_quality_pct'))
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': 'Node status recorded', 'node_id': node_id})
+        }
+
+    except Exception as e:
+        logger.error("Error processing node status: %s", e, exc_info=True)
         raise
 
 
