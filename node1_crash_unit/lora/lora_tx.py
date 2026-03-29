@@ -1,4 +1,5 @@
 """
+Final Fix for the LoRa crash transmitter
 lora_tx.py — MESH-TRACE LoRa crash transmitter (FINAL)
 =======================================================
 Works with the fixed board_config.py (LazySpiDev fix).
