@@ -68,46 +68,26 @@ class LoRaCrashTX(LoRa):
     def send_payload(self, payload_dict):
         payload_json = json.dumps(payload_dict)
         payload_bytes = [ord(c) for c in payload_json]
-        payload_len = len(payload_bytes)
-
-        print(f"[INFO] Sending crash payload ({payload_len} bytes):")
+        print(f"[INFO] Sending {len(payload_bytes)} bytes...")
         print(payload_json)
 
-        # write_payload() internally calls set_mode(STDBY) and sets FIFO ptr
-        self.write_payload(payload_bytes)
+        self.write_payload(payload_bytes)   # internally sets STDBY + FIFO ptr
 
-        # Clear any stale TX done flag before transmitting
-        self.set_irq_flags(tx_done=1)
+    # Poll DIO0 pin directly — faster and more reliable than IRQ register polling
+    # DIO0 goes HIGH when TX is done (when DIO mapping = 01 for TxDone)
+        self.set_dio_mapping([1, 0, 0, 0, 0, 0])  # DIO0 = TxDone
 
-        # Start transmission
-        self.set_mode(MODE.TX)
-
-        # FIX 3 — Poll the TxDone IRQ flag instead of blind sleep.
-        # Time-on-air for 200 bytes @ SF7/BW125/CR4/5 ≈ 350ms.
-        # We poll for up to 5 seconds to be safe.
-        print("[INFO] Waiting for TX done...")
         deadline = time.time() + 5.0
-        tx_confirmed = False
         while time.time() < deadline:
-            irq = self.get_irq_flags()
-            if irq.get('tx_done'):
-                tx_confirmed = True
+            if GPIO.input(BOARD.DIO0):          # DIO0 HIGH = TX done
+                print("[SUCCESS] Crash payload transmitted")
                 break
-            time.sleep(0.01)
+                time.sleep(0.005)
+            else:
+                print("[WARNING] TX timeout — check SPI/power wiring")
 
-        if tx_confirmed:
-            print("[SUCCESS] Crash payload transmitted (TX done confirmed)")
-        else:
-            print("[WARNING] TX done flag never set — check radio hardware/wiring")
-
-        # Clear TX done flag and return to standby
         self.clear_irq_flags(TxDone=1)
         self.set_mode(MODE.STDBY)
-
-    def cleanup(self):
-        self.set_mode(MODE.SLEEP)
-        BOARD.teardown()
-
 
 if __name__ == "__main__":
     lora = LoRaCrashTX()
