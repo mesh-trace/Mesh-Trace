@@ -24,6 +24,7 @@ import os
 import json
 import time
 from datetime import datetime, timezone
+import RPi.GPIO as GPIO  # pyright: ignore[reportMissingModuleSource]
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../lora_driver"))
 sys.path.append(BASE_DIR)
@@ -79,7 +80,7 @@ class LoRaCrashTX(LoRa):
 
         deadline = time.time() + 5.0
         while time.time() < deadline:
-            if GPIO.input(BOARD.DIO0):          # DIO0 HIGH = TX done
+            if GPIO.input(BOARD.DIO0):          # DIO0 HIGH = TX done  # pyright: ignore[reportUndefinedVariable]
                 print("[SUCCESS] Crash payload transmitted")
                 break
                 time.sleep(0.005)
