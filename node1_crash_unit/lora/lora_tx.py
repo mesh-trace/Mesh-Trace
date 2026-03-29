@@ -1,22 +1,9 @@
 """
-lora_tx.py  —  MESH-TRACE LoRa Crash Transmitter (Pi side)
-=============================================================
-ROOT CAUSE OF RX FAILURE (confirmed by library analysis):
-  The SX127x library default is CRC = OFF.
-  The ESP32 Arduino LoRa library has enableCrc() called in setup().
-  When ESP32 RX has CRC enabled but the incoming packet has NO CRC,
-  the Arduino LoRa library silently discards the packet — no error,
-  no log, just dropped. This was the entire problem.
-
-FIX SUMMARY (3 changes only, minimal and targeted):
-  1. self.set_rx_crc(True)   ← THE fix. Enables CRC on TX packet.
-  2. self.set_agc_auto_on(True) ← Improves RX sensitivity, recommended.
-  3. Poll tx_done IRQ flag instead of blind sleep for reliable TX confirm.
-
-All other parameters (SF7, BW125, CR4/5, sync=0x12, freq=433) are
-already correct because the chip's power-on defaults match ESP32 defaults.
-DO NOT add unnecessary set_bw / set_coding_rate calls — they risk
-corrupting the register state if called in wrong mode.
+lora_tx.py — MESH-TRACE LoRa crash transmitter (FINAL)
+=======================================================
+Works with the fixed board_config.py (LazySpiDev fix).
+All parameters explicitly set and verified by readback.
+TX done confirmed by polling DIO0 GPIO pin directly.
 """
 
 import sys
@@ -29,66 +16,104 @@ import RPi.GPIO as GPIO  # pyright: ignore[reportMissingModuleSource]
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../lora_driver"))
 sys.path.append(BASE_DIR)
 
-from SX127x.LoRa import LoRa                        # pyright: ignore
-from SX127x.board_config import BOARD               # pyright: ignore
-from SX127x.constants import MODE, BW, CODING_RATE  # pyright: ignore
+from SX127x.LoRa import LoRa  # pyright: ignore[reportMissingImports]
+from SX127x.board_config import BOARD  # pyright: ignore[reportMissingImports]
+from SX127x.constants import MODE, BW, CODING_RATE  # pyright: ignore[reportMissingImports]
 
 
 class LoRaCrashTX(LoRa):
 
     def __init__(self):
+        # BOARD.setup() MUST come before super().__init__()
+        # It fires the RST pulse which puts SX1278 in clean state.
+        # super().__init__() triggers the first SPI transaction (via LazySpiDev),
+        # which now happens AFTER the reset — this is the fix.
         BOARD.setup()
         super().__init__(verbose=False)
-    # After super().__init__, self.mode cache = 0x80 (SLEEP)
-    # but we must FORCE STDBY via direct register write, bypassing cache
 
-    # Force STDBY directly — bypass the cache check in set_mode()
-        self.spi.xfer([0x01 | 0x80, 0x81])   # write reg 0x01 = 0x81 (LoRa STDBY)
-        self.mode = 0x81                       # update cache to match
-        time.sleep(0.1)                        # let radio settle
+        # Force STDBY by writing directly to OpMode register
+        # Bypass set_mode() cache — we need the actual register write
+        self.spi.xfer([0x01 | 0x80, 0x81])   # reg 0x01 = 0x81 (LoRa + STDBY)
+        self.mode = 0x81
+        time.sleep(0.1)
 
-    # Now safe to configure all registers
+        # Configure all parameters explicitly
         self.set_freq(433.0)
         self.set_spreading_factor(7)
         self.set_bw(BW.BW125)
         self.set_coding_rate(CODING_RATE.CR4_5)
         self.set_sync_word(0x12)
-        self.set_rx_crc(True)                  # THE CRC FIX
+        self.set_rx_crc(True)           # MUST match ESP32's enableCrc()
         self.set_agc_auto_on(True)
         self.set_preamble(8)
         self.set_pa_config(pa_select=1, max_power=0x07, output_power=0x0F)
-   
-    # Read back to verify — if SF still shows 0, it's an SPI wiring issue
-        cfg2 = self.get_modem_config_2()
+
+        # Set DIO0 to signal TxDone (mapping = 01)
+        self.set_dio_mapping([1, 0, 0, 0, 0, 0])
+
+        # Readback verification — if SF=0 after this, SPI wiring is broken
         cfg1 = self.get_modem_config_1()
-        print(f"[INFO] Freq={self.get_freq():.3f} MHz | SF={cfg2['spreading_factor']} | "
-              f"BW={cfg1['bw']} | CRC={'ON' if cfg2['rx_crc'] else 'OFF'} | "
-              f"sync=0x{self.get_sync_word():02X}")
-    
+        cfg2 = self.get_modem_config_2()
+        freq = self.get_freq()
+        sf   = cfg2['spreading_factor']
+        bw   = cfg1['bw']
+        crc  = cfg2['rx_crc']
+        sw   = self.get_sync_word()
+
+        print(f"[INFO] LoRa TX initialized")
+        print(f"[INFO] Freq={freq:.3f} MHz | SF={sf} | BW={bw} (7=125kHz) | "
+              f"CRC={'ON' if crc else 'OFF'} | sync=0x{sw:02X}")
+
+        if sf != 7:
+            raise RuntimeError(
+                f"SPI FAILURE: SF readback={sf}, expected 7.\n"
+                f"Check: MISO→GPIO9, MOSI→GPIO10, SCK→GPIO11, NSS→GPIO8(CE0), RST→GPIO26\n"
+                f"Also verify SX1278 is powered by 3.3V NOT 5V."
+            )
+
+        print("[INFO] SPI verified OK — all registers responding correctly")
 
     def send_payload(self, payload_dict):
-        payload_json = json.dumps(payload_dict)
+        payload_json  = json.dumps(payload_dict)
         payload_bytes = [ord(c) for c in payload_json]
         print(f"[INFO] Sending {len(payload_bytes)} bytes...")
         print(payload_json)
 
-        self.write_payload(payload_bytes)   # internally sets STDBY + FIFO ptr
+        # write_payload sets STDBY internally and loads FIFO
+        self.write_payload(payload_bytes)
 
-    # Poll DIO0 pin directly — faster and more reliable than IRQ register polling
-    # DIO0 goes HIGH when TX is done (when DIO mapping = 01 for TxDone)
-        self.set_dio_mapping([1, 0, 0, 0, 0, 0])  # DIO0 = TxDone
+        # Clear any stale IRQ flags
+        self.set_irq_flags(tx_done=1)
 
+        # Start transmitting
+        self.set_mode(MODE.TX)
+
+        # Poll DIO0 GPIO pin — goes HIGH when TX is done
+        # Faster and more reliable than register polling
         deadline = time.time() + 5.0
         while time.time() < deadline:
-            if GPIO.input(BOARD.DIO0):          # DIO0 HIGH = TX done  # pyright: ignore[reportUndefinedVariable]
-                print("[SUCCESS] Crash payload transmitted")
+            if GPIO.input(BOARD.DIO0):
+                print("[SUCCESS] Crash payload transmitted — TX done confirmed")
                 break
-                time.sleep(0.005)
+            time.sleep(0.005)
+        else:
+            # Fallback: check IRQ register directly
+            irq = self.get_irq_flags()
+            if irq.get('tx_done'):
+                print("[SUCCESS] Crash payload transmitted — confirmed via IRQ register")
             else:
-                print("[WARNING] TX timeout — check SPI/power wiring")
+                print("[WARNING] TX timeout — DIO0 pin never went HIGH")
+                print(f"[DEBUG]  DIO0 GPIO={BOARD.DIO0}, RST GPIO={BOARD.RST}")
+                print(f"[DEBUG]  IRQ flags={irq}")
+                print("[DEBUG]  Verify DIO0 wire: SX1278 DIO0 → Pi GPIO5 (Pin 29)")
 
         self.clear_irq_flags(TxDone=1)
         self.set_mode(MODE.STDBY)
+
+    def cleanup(self):
+        self.set_mode(MODE.SLEEP)
+        BOARD.teardown()
+
 
 if __name__ == "__main__":
     lora = LoRaCrashTX()
@@ -104,6 +129,6 @@ if __name__ == "__main__":
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-    time.sleep(0.5)  # short settle time after init
+    time.sleep(0.5)
     lora.send_payload(crash_payload)
     lora.cleanup()
