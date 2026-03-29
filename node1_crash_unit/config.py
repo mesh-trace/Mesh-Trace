@@ -61,7 +61,7 @@ BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '1000'))
 PRE_CRASH_DURATION = int(os.getenv('PRE_CRASH_DURATION', '5'))
 
 # LoRa Configuration
-LORA_FREQUENCY = float(os.getenv('LORA_FREQUENCY', '915.0'))
+LORA_FREQUENCY = float(os.getenv('LORA_FREQUENCY', '433.0'))
 LORA_SPREADING_FACTOR = int(os.getenv('LORA_SPREADING_FACTOR', '7'))
 LORA_BANDWIDTH = int(os.getenv('LORA_BANDWIDTH', '125000'))
 LORA_CODING_RATE = int(os.getenv('LORA_CODING_RATE', '5'))
