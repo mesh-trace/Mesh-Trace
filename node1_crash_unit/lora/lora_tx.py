@@ -38,43 +38,32 @@ class LoRaCrashTX(LoRa):
     def __init__(self):
         BOARD.setup()
         super().__init__(verbose=False)
-        # After super().__init__, radio is in LoRa SLEEP mode (0x80)
+    # After super().__init__, self.mode cache = 0x80 (SLEEP)
+    # but we must FORCE STDBY via direct register write, bypassing cache
 
-        # Must be STDBY to configure registers
-        self.set_mode(MODE.STDBY)
-        time.sleep(0.05)
+    # Force STDBY directly — bypass the cache check in set_mode()
+        self.spi.xfer([0x01 | 0x80, 0x81])   # write reg 0x01 = 0x81 (LoRa STDBY)
+        self.mode = 0x81                       # update cache to match
+        time.sleep(0.1)                        # let radio settle
 
-        # Set frequency — must be in SLEEP or STDBY
+    # Now safe to configure all registers
         self.set_freq(433.0)
-
-        # -------------------------------------------------------
-        # FIX 1 — THE ROOT CAUSE: enable CRC on transmitted packets
-        # ESP32 calls LoRa.enableCrc() so it REQUIRES CRC in every
-        # received packet. Pi default is CRC=OFF → packet silently dropped.
-        # -------------------------------------------------------
-        self.set_rx_crc(True)   # <-- THIS WAS THE ENTIRE PROBLEM
-
-        # FIX 2 — Enable AGC (automatic gain control) for better reception
-        # (also helps TX reliability by ensuring LNA is set correctly)
+        self.set_spreading_factor(7)
+        self.set_bw(BW.BW125)
+        self.set_coding_rate(CODING_RATE.CR4_5)
+        self.set_sync_word(0x12)
+        self.set_rx_crc(True)                  # THE CRC FIX
         self.set_agc_auto_on(True)
-
-        # These are already correct by chip default, set explicitly for clarity
-        self.set_spreading_factor(7)           # SF7  — matches ESP32
-        self.set_bw(BW.BW125)                  # 125kHz — matches ESP32
-        self.set_coding_rate(CODING_RATE.CR4_5) # CR4/5 — matches ESP32
-        self.set_sync_word(0x12)               # 0x12 — matches ESP32
-        self.set_preamble(8)                   # 8 symbols — matches ESP32
-
-        # PA_BOOST pin, max power
+        self.set_preamble(8)
         self.set_pa_config(pa_select=1, max_power=0x07, output_power=0x0F)
-
-        # Print confirmation of all settings
-        print("[INFO] LoRa Crash TX initialized")
-        print(f"[INFO] Freq={self.get_freq():.1f} MHz | "
-              f"SF={self.get_modem_config_2()['spreading_factor']} | "
-              f"BW idx={self.get_modem_config_1()['bw']} (7=125kHz) | "
-              f"CRC={'ON' if self.get_modem_config_2()['rx_crc'] else 'OFF'} | "
+   
+    # Read back to verify — if SF still shows 0, it's an SPI wiring issue
+        cfg2 = self.get_modem_config_2()
+        cfg1 = self.get_modem_config_1()
+        print(f"[INFO] Freq={self.get_freq():.3f} MHz | SF={cfg2['spreading_factor']} | "
+              f"BW={cfg1['bw']} | CRC={'ON' if cfg2['rx_crc'] else 'OFF'} | "
               f"sync=0x{self.get_sync_word():02X}")
+    
 
     def send_payload(self, payload_dict):
         payload_json = json.dumps(payload_dict)
