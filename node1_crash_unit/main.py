@@ -163,20 +163,20 @@ class CrashDetectionUnit:
         )
 
         crash_payload = {
+            "event_type": "crash",   # 🔥 CRITICAL FIX
             "type":  "crash_alert",
             "alert": "VEHICLE_CRASH_DETECTED",
-            "node_id":                NODE_ID,
-            "severity":               severity,
+            "node_id": NODE_ID,
+            "severity": severity,
             "acceleration_magnitude": round(accel_mag, 2),
             "location": {
-                "latitude":  gps["latitude"],
+                "latitude": gps["latitude"],
                 "longitude": gps["longitude"],
             } if has_gps_fix else None,
-            "timestamp":        datetime.now(IST).isoformat(),
-            "data":             sensor_data,
+            "timestamp": datetime.now(IST).isoformat(),
+            "data": sensor_data,
             "pre_crash_buffer": list(self.data_buffer),
-        }
-
+}
         logger.info(
             "Crash payload: node_id=%s severity=%s location=%s pre_crash=%d samples",
             crash_payload["node_id"], crash_payload["severity"],
