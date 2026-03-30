@@ -25,7 +25,6 @@ from .sensors.gps import GPSSensor
 
 from .storage.blackbox_logger import BlackboxLogger
 from .cloud.mqtt_client import AWSIoTPublisher
-
 from .lora.lora_tx import LoRaCrashTX
 
 
@@ -63,19 +62,13 @@ class CrashDetectionUnit:
     def __init__(self):
         logger.info("Initializing Mesh-Trace Crash Detection Unit...")
 
-        # Sensors
-        logger.debug("Initializing sensors: MPU6050, ImpactSensor, TemperatureSensor, GPSSensor")
-        self.mpu6050           = MPU6050()
-        self.impact_sensor     = ImpactSensor(IMPACT_SENSOR_PINS)
+        self.mpu6050            = MPU6050()
+        self.impact_sensor      = ImpactSensor(IMPACT_SENSOR_PINS)
         self.temperature_sensor = TemperatureSensor(pin=TEMPERATURE_SENSOR_PIN)
-        self.gps_sensor        = GPSSensor(port=GPS_SERIAL_PORT, baudrate=GPS_BAUDRATE)
-        logger.debug("Sensors initialized")
+        self.gps_sensor         = GPSSensor(port=GPS_SERIAL_PORT, baudrate=GPS_BAUDRATE)
 
-        # GPS cache — reuse last known fix when current read has no fix
         self.last_known_gps = None
 
-        # Cloud MQTT
-        logger.debug("Initializing AWS IoT MQTT client")
         self.cloud_client = AWSIoTPublisher(
             certs={
                 "ca":   AWS_CA_CERT,
@@ -84,20 +77,13 @@ class CrashDetectionUnit:
             }
         )
 
-        # LoRa fallback
-        logger.debug("Initializing LoRa transmitter")
-        self.lora_tx = LoRaCrashTX()
-
-        # Blackbox local storage
-        logger.debug("Initializing blackbox logger")
+        self.lora_tx  = LoRaCrashTX()
         self.blackbox = BlackboxLogger()
 
-        # Pre-crash ring buffer
-        buffer_size = PRE_CRASH_DURATION * SAMPLE_RATE
+        buffer_size      = PRE_CRASH_DURATION * SAMPLE_RATE
         self.data_buffer = deque(maxlen=buffer_size)
         logger.debug("Pre-crash buffer: %d samples (%.1f s)", buffer_size, PRE_CRASH_DURATION)
 
-        # Telemetry timer — send live sensor data every 60 s for dashboard
         self.telemetry_interval  = 60
         self.last_telemetry_time = time.time()
 
@@ -108,13 +94,10 @@ class CrashDetectionUnit:
     # ──────────────────────────────────────────
 
     def read_all_sensors(self):
-        logger.debug("Reading all sensors")
         accel       = self.mpu6050.read_acceleration()
         gyro        = self.mpu6050.read_gyroscope()
         temperature = self.temperature_sensor.read()
-        logger.debug("Accel=%s Gyro=%s Temp=%s", accel, gyro, temperature)
 
-        # GPS with last-known-fix cache
         gps_raw = self.gps_sensor.get_position()
         if gps_raw and gps_raw.get("fix_quality", 0) > 0:
             self.last_known_gps = {
@@ -124,16 +107,10 @@ class CrashDetectionUnit:
                 "satellites":  gps_raw.get("satellites"),
                 "fix_quality": gps_raw.get("fix_quality"),
             }
-            logger.debug(
-                "GPS fix: lat=%s lon=%s sats=%s",
-                self.last_known_gps.get("latitude"),
-                self.last_known_gps.get("longitude"),
-                self.last_known_gps.get("satellites"),
-            )
         else:
             logger.debug("No GPS fix — using cached: %s", self.last_known_gps)
 
-        data = {
+        return {
             "timestamp":     datetime.now(IST).isoformat(),
             "node_id":       NODE_ID,
             "accelerometer": accel,
@@ -141,38 +118,26 @@ class CrashDetectionUnit:
             "temperature":   temperature,
             "gps":           self.last_known_gps,
         }
-        logger.debug("Sensor data assembled: timestamp=%s", data["timestamp"])
-        return data
 
     # ──────────────────────────────────────────
-    # CRASH DETECTION (MPU6050 + SW420 fusion)
+    # CRASH DETECTION
     # ──────────────────────────────────────────
 
     def detect_crash(self, sensor_data):
         accel = sensor_data.get("accelerometer")
         if not accel:
-            logger.debug("detect_crash: no accelerometer data, skipping")
             return False, None, None
 
-        ax = accel["x"]
-        ay = accel["y"]
-        az = accel["z"]
-        accel_mag = (ax**2 + ay**2 + az**2) ** 0.5
-        logger.debug(
-            "Accel magnitude: %.2f m/s² (x=%.2f y=%.2f z=%.2f)",
-            accel_mag, ax, ay, az,
-        )
+        ax, ay, az = accel["x"], accel["y"], accel["z"]
+        accel_mag  = (ax**2 + ay**2 + az**2) ** 0.5
 
         impact_confirmed = self.impact_sensor.detect_impact(
             accel_magnitude=accel_mag,
             timestamp=time.time(),
         )
-
         if not impact_confirmed:
-            logger.debug("Impact not confirmed (SW420 + accel correlation failed)")
             return False, None, None
 
-        # Severity bands
         if accel_mag < 15:
             severity = "LOW"
         elif accel_mag < 25:
@@ -184,7 +149,7 @@ class CrashDetectionUnit:
         return True, severity, accel_mag
 
     # ──────────────────────────────────────────
-    # HANDLE CRASH
+    # HANDLE CRASH  — unchanged from working version
     # ──────────────────────────────────────────
 
     def handle_crash(self, sensor_data, severity, accel_mag):
@@ -198,80 +163,51 @@ class CrashDetectionUnit:
         )
 
         crash_payload = {
-            # Routing keys — Console Lambda checks these
-            "type":  "crash_alert",            # routes to handle_crash() in Lambda
-            "alert": "VEHICLE_CRASH_DETECTED", # legacy fallback key also supported
-
-            # Identity & severity
+            "type":  "crash_alert",
+            "alert": "VEHICLE_CRASH_DETECTED",
             "node_id":                NODE_ID,
             "severity":               severity,
             "acceleration_magnitude": round(accel_mag, 2),
-
-            # Location — top-level for Lambda extract_sensors()
             "location": {
                 "latitude":  gps["latitude"],
                 "longitude": gps["longitude"],
             } if has_gps_fix else None,
-
-            # Timestamps
-            "timestamp": datetime.now(IST).isoformat(),
-
-            # Full sensor snapshot at crash moment
-            "data": sensor_data,
-
-            # Pre-crash ring buffer
+            "timestamp":        datetime.now(IST).isoformat(),
+            "data":             sensor_data,
             "pre_crash_buffer": list(self.data_buffer),
         }
 
-        # Log payload summary before sending
         logger.info(
-            "Crash payload: node_id=%s severity=%s location=%s "
-            "pre_crash_buffer=%d samples payload_approx=%d bytes",
-            crash_payload["node_id"],
-            crash_payload["severity"],
-            crash_payload["location"],
-            len(crash_payload["pre_crash_buffer"]),
-            len(str(crash_payload)),
+            "Crash payload: node_id=%s severity=%s location=%s pre_crash=%d samples",
+            crash_payload["node_id"], crash_payload["severity"],
+            crash_payload["location"], len(crash_payload["pre_crash_buffer"]),
         )
-        logger.debug("Crash payload keys: %s", list(crash_payload.keys()))
 
-        # Always write to local blackbox first
-        logger.debug("Logging crash to blackbox")
         self.blackbox.log_crash(crash_payload)
 
-        # Attempt cloud publish; fall back to LoRa if unavailable
         if is_network_available():
-            logger.info("Network available → sending crash to AWS IoT")
             if self.cloud_client.safe_publish(crash_payload):
                 logger.info("Crash sent to AWS IoT successfully")
             else:
-                logger.warning("safe_publish failed → falling back to LoRa")
+                logger.warning("safe_publish failed → LoRa fallback")
                 self.lora_tx.send_payload(crash_payload)
         else:
-            logger.warning("No network → sending crash via LoRa relay")
+            logger.warning("No network → LoRa fallback")
             self.lora_tx.send_payload(crash_payload)
 
     # ──────────────────────────────────────────
     # PERIODIC TELEMETRY
+    # Payload fields match the Nodes DynamoDB table exactly:
+    #   nodeId, acceleration_magnitude, battery, lastSeen,
+    #   lastUpdateType, location (Map), name, status
     # ──────────────────────────────────────────
 
     def send_periodic_telemetry(self, sensor_data):
-        """
-        Send a live sensor snapshot to AWS every 60 s for dashboard monitoring.
-        Payload includes all fields the Console Lambda handle_telemetry() needs
-        to write to the Nodes DynamoDB table:
-          - type, node_id, timestamp       (routing + identity)
-          - accelerometer, accel_magnitude (sensor state)
-          - gps                            (location object)
-          - location                       (explicit lat/lon for Lambda extract_sensors)
-          - battery                        (Nodes table battery fields)
-          - temperature, gyroscope         (extra sensor data)
-        """
         try:
-            accel  = sensor_data.get("accelerometer", {})
-            ax     = accel.get("x", 0)
-            ay     = accel.get("y", 0)
-            az     = accel.get("z", 0)
+            accel = sensor_data.get("accelerometer", {})
+            ax    = accel.get("x", 0)
+            ay    = accel.get("y", 0)
+            az    = accel.get("z", 0)
             accel_mag = round((ax**2 + ay**2 + az**2) ** 0.5, 3)
 
             gps = sensor_data.get("gps")
@@ -281,43 +217,49 @@ class CrashDetectionUnit:
                 and gps.get("longitude") is not None
             )
 
-            # ── FIX: added 'location' and 'battery' fields ──────────────────
-            # Console Lambda handle_telemetry() calls extract_sensors() which
-            # reads body.get("location") for lat/lon, and body.get("battery")
-            # for battery_pct, voltage_v, status → written to Nodes table.
-            # Without these two fields the Nodes table had no GPS and no battery.
-            # ────────────────────────────────────────────────────────────────
+            # ── Nodes table fields (match screenshot exactly) ──────────────
+            #
+            #  nodeId             → node_id  (Lambda maps node_id → nodeId)
+            #  acceleration_magnitude → accel_mag as string
+            #  battery            → battery_pct number
+            #  lastSeen           → IST timestamp string
+            #  lastUpdateType     → "normal" for telemetry, "crash" for crashes
+            #  location           → Map { latitude, longitude }
+            #  name               → human-readable node name
+            #  status             → "online" / "offline" / "crashed"
+            #
+            # Extra sensor fields included so Lambda has full data for
+            # extract_sensors() fallback paths (gps, temperature, gyroscope)
+            # ──────────────────────────────────────────────────────────────
+
             payload = {
-                # Routing
+                # ── Routing (Lambda needs these) ──
                 "type":    "LIVE_TELEMETRY",
                 "node_id": NODE_ID,
-                "timestamp": datetime.now(IST).isoformat(),
 
-                # Accelerometer
-                "accelerometer":          sensor_data.get("accelerometer"),
+                # ── Nodes table fields (match DynamoDB schema) ──
+                "lastSeen":              datetime.now(IST).isoformat(),
+                "lastUpdateType":        "normal",
+                "status":                "online",
+                "name":                  "Highway Node",   # change per node if needed
                 "acceleration_magnitude": accel_mag,
 
-                # Other sensors
-                "gyroscope":   sensor_data.get("gyroscope"),
-                "temperature": sensor_data.get("temperature"),
-
-                # GPS object (full, for Lambda gps_data fallback)
-                "gps": gps,
-
-                # FIX 1 — explicit location dict for Lambda extract_sensors()
+                # location as a Map — matches DynamoDB Map type in screenshot
                 "location": {
                     "latitude":  gps["latitude"],
                     "longitude": gps["longitude"],
                 } if has_gps_fix else None,
 
-                # FIX 2 — battery block for Nodes table
-                # Replace the hardcoded values below with real readings
-                # if your hardware supports battery monitoring.
-                "battery": {
-                    "battery_pct": 100,   # replace with actual % if available
-                    "voltage_v":   3.7,   # replace with actual voltage if available
-                    "status":      "ok",  # ok / low / critical
-                },
+                # battery as a number (matches DynamoDB Number type in screenshot)
+                # Replace 100 with real reading if hardware supports it
+                "battery": 100,
+
+                # ── Extra sensor data for Lambda extract_sensors() ──
+                "timestamp":              datetime.now(IST).isoformat(),
+                "accelerometer":          sensor_data.get("accelerometer"),
+                "gyroscope":              sensor_data.get("gyroscope"),
+                "temperature":            sensor_data.get("temperature"),
+                "gps":                    gps,
             }
 
             if not is_network_available():
@@ -326,17 +268,17 @@ class CrashDetectionUnit:
 
             if self.cloud_client.safe_publish(payload):
                 logger.info(
-                    "Periodic telemetry published: accel_mag=%.2f gps=%s temp=%s",
+                    "Telemetry published: accel_mag=%.2f gps=%s battery=%s status=online",
                     accel_mag,
-                    (f"{gps['latitude']:.4f},{gps['longitude']:.4f}"
-                     if has_gps_fix else "no fix"),
-                    sensor_data.get("temperature", {}).get("temperature"),
+                    f"{gps['latitude']:.4f},{gps['longitude']:.4f}"
+                    if has_gps_fix else "no fix",
+                    payload["battery"],
                 )
             else:
-                logger.warning("Periodic telemetry publish failed")
+                logger.warning("Telemetry publish failed")
 
         except Exception as e:
-            logger.warning("Periodic telemetry error (suppressed): %s", e, exc_info=True)
+            logger.warning("Telemetry error (suppressed): %s", e, exc_info=True)
 
     # ──────────────────────────────────────────
     # MAIN LOOP
@@ -345,7 +287,7 @@ class CrashDetectionUnit:
     def run(self):
         interval = 1 / SAMPLE_RATE
         logger.info(
-            "Starting crash detection loop: sample_rate=%d Hz interval=%.3f s",
+            "Starting loop: sample_rate=%d Hz interval=%.3f s",
             SAMPLE_RATE, interval,
         )
         loop_count = 0
@@ -354,27 +296,19 @@ class CrashDetectionUnit:
             while True:
                 current_time = time.time()
                 loop_count  += 1
-                logger.debug("Loop iteration %d", loop_count)
 
                 sensor_data = self.read_all_sensors()
 
                 self.blackbox.log(sensor_data, log_type="sensor")
                 self.data_buffer.append(sensor_data)
-                logger.debug(
-                    "Buffer: %d/%d",
-                    len(self.data_buffer),
-                    self.data_buffer.maxlen,
-                )
 
                 is_crash, severity, accel_mag = self.detect_crash(sensor_data)
 
                 if is_crash:
                     logger.warning("CRASH DETECTED | Severity: %s", severity)
                     self.handle_crash(sensor_data, severity, accel_mag)
-                    logger.debug("Post-crash cooldown: sleeping 5 s")
-                    time.sleep(5)
+                    time.sleep(5)   # post-crash cooldown
 
-                # Periodic telemetry every telemetry_interval seconds
                 if current_time - self.last_telemetry_time >= self.telemetry_interval:
                     self.send_periodic_telemetry(sensor_data)
                     self.last_telemetry_time = current_time
@@ -382,10 +316,7 @@ class CrashDetectionUnit:
                 time.sleep(interval)
 
         except KeyboardInterrupt:
-            logger.info(
-                "KeyboardInterrupt: shutting down (loop_count=%d)",
-                loop_count,
-            )
+            logger.info("KeyboardInterrupt: shutting down (loop_count=%d)", loop_count)
             self.cleanup()
 
     # ──────────────────────────────────────────
@@ -396,18 +327,14 @@ class CrashDetectionUnit:
         logger.info("Cleaning up resources")
         try:
             self.mpu6050.cleanup()
-            logger.debug("MPU6050 cleanup done")
         except Exception as e:
             logger.warning("MPU6050 cleanup error: %s", e)
-
         try:
             self.gps_sensor.cleanup()
-            logger.debug("GPS cleanup done")
         except Exception as e:
             logger.warning("GPS cleanup error: %s", e)
-
         self.blackbox.close()
-        logger.info("Resources cleaned up")
+        logger.info("Cleanup done")
 
 
 # ──────────────────────────────────────────────
@@ -418,8 +345,7 @@ def main():
     setup_logging()
     logger.info("=" * 60)
     logger.info("Mesh-Trace | Node-1 Crash Detection Unit")
-    logger.info("Raspberry Pi Zero WH")
-    logger.info("Timezone: IST (UTC +05:30)")
+    logger.info("Raspberry Pi Zero WH  |  Timezone: IST (UTC+05:30)")
     logger.info("=" * 60)
     unit = CrashDetectionUnit()
     unit.run()
