@@ -77,7 +77,7 @@ BLACKBOX_ROTATION_COUNT = int(os.getenv('BLACKBOX_ROTATION_COUNT', '5'))
 
 # Cloud Configuration
 AWS_IOT_ENDPOINT = os.getenv('AWS_IOT_ENDPOINT')
-MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'mesh-trace/crash-alerts/node-001')
+MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'meshtrace/nodes/mesh-trace-node-001/data')
 MQTT_QOS = int(os.getenv('MQTT_QOS', '1'))
 
 # Network Configuration
