@@ -98,7 +98,8 @@ class AWSIoTPublisher:
                             time.sleep(delay)
                         continue
 
-                result = self.client.publish(MQTT_TOPIC, payload_str, qos=MQTT_QOS)
+                dynamic_topic = f"meshtrace/nodes/{NODE_ID}/data"
+                result = self.client.publish(dynamic_topic, payload_str, qos=MQTT_QOS)
                 if result.rc == 0:
                     logger.info("safe_publish: success mid=%s", result.mid)
                     return True
