@@ -163,24 +163,18 @@ class CrashDetectionUnit:
         )
 
         crash_payload = {
-            "event_type": "crash",   # 🔥 CRITICAL FIX
-            "type":  "crash_alert",
-            "alert": "VEHICLE_CRASH_DETECTED",
-            "node_id": NODE_ID,
-            "severity": severity,
-            "acceleration_magnitude": round(accel_mag, 2),
-            "location": {
-                "latitude": gps["latitude"],
-                "longitude": gps["longitude"],
-            } if has_gps_fix else None,
-            "timestamp": datetime.now(IST).isoformat(),
-            "data": sensor_data,
-            "pre_crash_buffer": list(self.data_buffer),
-}
+            "node_id":    NODE_ID,                          # camelCase — Lambda reads this
+            "timestamp":  int(time.time() * 1000),          # MILLISECONDS — Lambda divides by 1000
+            "type":       "crash",
+            "lat":        gps["latitude"]  if has_gps_fix else None,
+            "lng":        gps["longitude"] if has_gps_fix else None,
+            "severity":   severity.lower(),                 # 'low'/'medium'/'high' lowercase
+        }
+
         logger.info(
-            "Crash payload: node_id=%s severity=%s location=%s pre_crash=%d samples",
+            "Crash payload: node_id=%s severity=%s lat=%s lng=%s",
             crash_payload["node_id"], crash_payload["severity"],
-            crash_payload["location"], len(crash_payload["pre_crash_buffer"]),
+            crash_payload["lat"], crash_payload["lng"],
         )
 
         self.blackbox.log_crash(crash_payload)
@@ -195,12 +189,6 @@ class CrashDetectionUnit:
             logger.warning("No network → LoRa fallback")
             self.lora_tx.send_payload(crash_payload)
 
-    # ──────────────────────────────────────────
-    # PERIODIC TELEMETRY
-    # Payload fields match the Nodes DynamoDB table exactly:
-    #   nodeId, acceleration_magnitude, battery, lastSeen,
-    #   lastUpdateType, location (Map), name, status
-    # ──────────────────────────────────────────
 
     def send_periodic_telemetry(self, sensor_data):
         try:
@@ -217,49 +205,13 @@ class CrashDetectionUnit:
                 and gps.get("longitude") is not None
             )
 
-            # ── Nodes table fields (match screenshot exactly) ──────────────
-            #
-            #  nodeId             → node_id  (Lambda maps node_id → nodeId)
-            #  acceleration_magnitude → accel_mag as string
-            #  battery            → battery_pct number
-            #  lastSeen           → IST timestamp string
-            #  lastUpdateType     → "normal" for telemetry, "crash" for crashes
-            #  location           → Map { latitude, longitude }
-            #  name               → human-readable node name
-            #  status             → "online" / "offline" / "crashed"
-            #
-            # Extra sensor fields included so Lambda has full data for
-            # extract_sensors() fallback paths (gps, temperature, gyroscope)
-            # ──────────────────────────────────────────────────────────────
-
             payload = {
-                # ── Routing (Lambda needs these) ──
-                "type":    "LIVE_TELEMETRY",
-                "node_id": NODE_ID,
-
-                # ── Nodes table fields (match DynamoDB schema) ──
-                "lastSeen":              datetime.now(IST).isoformat(),
-                "lastUpdateType":        "normal",
-                "status":                "online",
-                "name":                  "Highway Node",   # change per node if needed
-                "acceleration_magnitude": accel_mag,
-
-                # location as a Map — matches DynamoDB Map type in screenshot
-                "location": {
-                    "latitude":  gps["latitude"],
-                    "longitude": gps["longitude"],
-                } if has_gps_fix else None,
-
-                # battery as a number (matches DynamoDB Number type in screenshot)
-                # Replace 100 with real reading if hardware supports it
-                "battery": 100,
-
-                # ── Extra sensor data for Lambda extract_sensors() ──
-                "timestamp":              datetime.now(IST).isoformat(),
-                "accelerometer":          sensor_data.get("accelerometer"),
-                "gyroscope":              sensor_data.get("gyroscope"),
-                "temperature":            sensor_data.get("temperature"),
-                "gps":                    gps,
+                "node_id":    NODE_ID,
+                "timestamp":  int(time.time() * 1000),
+                "type":       "telemetry",
+                "lat":        gps["latitude"]  if has_gps_fix else None,
+                "lng":        gps["longitude"] if has_gps_fix else None,
+                "battery":   100,                            # replace with real value if available
             }
 
             if not is_network_available():
