@@ -172,8 +172,8 @@ class CrashDetectionUnit:
         }
 
         logger.info(
-            "Crash payload: node_id=%s severity=%s lat=%s lng=%s",
-            crash_payload["node_id"], crash_payload["severity"],
+            "Crash payload: node_Id=%s severity=%s lat=%s lng=%s",
+            crash_payload["nodeId"], crash_payload["severity"],
             crash_payload["lat"], crash_payload["lng"],
         )
 
