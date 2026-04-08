@@ -30,6 +30,7 @@ from .lora.lora_tx import LoRaCrashTX
 
 # TIMEZONE (IST)
 IST = timezone(timedelta(hours=5, minutes=30))
+IST_OFFSET_MS = 5 * 3600 * 1000 + 30 * 60 * 1000   # 19800000 ms
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -164,7 +165,7 @@ class CrashDetectionUnit:
 
         crash_payload = {
         "nodeId":    NODE_ID,
-        "timestamp": int(time.time() * 1000),   # ← MILLISECONDS, was time.time() without *1000
+        "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
         "type":      "crash",
         "lat":       gps["latitude"]  if has_gps_fix else None,
         "lng":       gps["longitude"] if has_gps_fix else None,
@@ -207,7 +208,7 @@ class CrashDetectionUnit:
 
             payload = {
             "nodeId":    NODE_ID,
-            "timestamp": int(time.time() * 1000),
+            "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
             "type":      "telemetry",
             "lat":       gps["latitude"]  if has_gps_fix else None,
             "lng":       gps["longitude"] if has_gps_fix else None,
