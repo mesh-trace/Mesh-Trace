@@ -163,12 +163,12 @@ class CrashDetectionUnit:
         )
 
         crash_payload = {
-            "node_id":    NODE_ID,                          # camelCase — Lambda reads this
-            "timestamp":  int(time.time() * 1000),          # MILLISECONDS — Lambda divides by 1000
-            "type":       "crash",
-            "lat":        gps["latitude"]  if has_gps_fix else None,
-            "lng":        gps["longitude"] if has_gps_fix else None,
-            "severity":   severity.lower(),                 # 'low'/'medium'/'high' lowercase
+        "nodeId":    NODE_ID,
+        "timestamp": int(time.time() * 1000),   # ← MILLISECONDS, was time.time() without *1000
+        "type":      "crash",
+        "lat":       gps["latitude"]  if has_gps_fix else None,
+        "lng":       gps["longitude"] if has_gps_fix else None,
+        "severity":  severity.lower(),           # 'low' / 'medium' / 'high'
         }
 
         logger.info(
@@ -206,12 +206,12 @@ class CrashDetectionUnit:
             )
 
             payload = {
-                "node_id":    NODE_ID,
-                "timestamp":  int(time.time() * 1000),
-                "type":       "telemetry",
-                "lat":        gps["latitude"]  if has_gps_fix else None,
-                "lng":        gps["longitude"] if has_gps_fix else None,
-                "battery":   100,                            # replace with real value if available
+            "nodeId":    NODE_ID,
+            "timestamp": int(time.time() * 1000),
+            "type":      "telemetry",
+            "lat":       gps["latitude"]  if has_gps_fix else None,
+            "lng":       gps["longitude"] if has_gps_fix else None,
+            "battery":   100,
             }
 
             if not is_network_available():
