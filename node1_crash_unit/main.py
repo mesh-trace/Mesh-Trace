@@ -139,9 +139,9 @@ class CrashDetectionUnit:
         if not impact_confirmed:
             return False, None, None
 
-        if accel_mag < 15:
+        if accel_mag < 2:
             severity = "LOW"
-        elif accel_mag < 25:
+        elif accel_mag < 5:
             severity = "MEDIUM"
         else:
             severity = "HIGH"
