@@ -14,8 +14,6 @@ from .config import (
     TEMPERATURE_SENSOR_PIN,
     GPS_SERIAL_PORT,
     GPS_BAUDRATE,
-    ACCELERATION_THRESHOLD,     # ← read from .env
-    IMPACT_THRESHOLD,           # ← read from .env
     setup_logging,
 )
 
@@ -31,8 +29,8 @@ from .lora.lora_tx import LoRaCrashTX
 
 
 # TIMEZONE (IST)
-IST            = timezone(timedelta(hours=5, minutes=30))
-IST_OFFSET_MS  = 5 * 3600 * 1000 + 30 * 60 * 1000   # 19800000 ms
+IST = timezone(timedelta(hours=5, minutes=30))
+IST_OFFSET_MS = 5 * 3600 * 1000 + 30 * 60 * 1000   # 19800000 ms
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -90,14 +88,6 @@ class CrashDetectionUnit:
         self.telemetry_interval  = 60
         self.last_telemetry_time = time.time()
 
-        # ── DEMO MODE: log active thresholds so you can confirm at startup ──
-        logger.info("=" * 50)
-        logger.info("DEMO THRESHOLDS ACTIVE:")
-        logger.info("  ACCELERATION_THRESHOLD = %.1f m/s²", ACCELERATION_THRESHOLD)
-        logger.info("  IMPACT_THRESHOLD       = %.1f",       IMPACT_THRESHOLD)
-        logger.info("  (both read from .env)")
-        logger.info("=" * 50)
-
         logger.info("System initialized successfully")
 
     # ──────────────────────────────────────────
@@ -142,15 +132,6 @@ class CrashDetectionUnit:
         ax, ay, az = accel["x"], accel["y"], accel["z"]
         accel_mag  = (ax**2 + ay**2 + az**2) ** 0.5
 
-        # ── FIX 1: Use ACCELERATION_THRESHOLD from .env instead of hardcoded 15 ──
-        # In .env set ACCELERATION_THRESHOLD=1.0 for demo
-        # In production set ACCELERATION_THRESHOLD=15.0
-        if accel_mag < ACCELERATION_THRESHOLD:
-            return False, None, None
-
-        # ── FIX 2: impact_sensor.detect_impact uses IMPACT_THRESHOLD from .env ──
-        # In .env set IMPACT_THRESHOLD=1.0 for demo
-        # In production set IMPACT_THRESHOLD=6.0
         impact_confirmed = self.impact_sensor.detect_impact(
             accel_magnitude=accel_mag,
             timestamp=time.time(),
@@ -158,30 +139,18 @@ class CrashDetectionUnit:
         if not impact_confirmed:
             return False, None, None
 
-        # ── FIX 3: Severity bands now scale with ACCELERATION_THRESHOLD ──
-        # Demo mode (threshold=1): any tap gives HIGH immediately
-        # Production mode (threshold=15): real crash bands apply
-        LOW_BAND    = ACCELERATION_THRESHOLD * 1.0   # at threshold = trigger LOW
-        MEDIUM_BAND = ACCELERATION_THRESHOLD * 2.0   # 2x threshold = MEDIUM
-        HIGH_BAND   = ACCELERATION_THRESHOLD * 3.0   # 3x threshold = HIGH
-
-        if accel_mag < MEDIUM_BAND:
+        if accel_mag < 15:
             severity = "LOW"
-        elif accel_mag < HIGH_BAND:
+        elif accel_mag < 25:
             severity = "MEDIUM"
         else:
             severity = "HIGH"
 
-        logger.info(
-            "Crash confirmed: severity=%s accel_mag=%.2f m/s² "
-            "(threshold=%.1f LOW<%.1f MEDIUM<%.1f HIGH>=%.1f)",
-            severity, accel_mag,
-            ACCELERATION_THRESHOLD, MEDIUM_BAND, HIGH_BAND, HIGH_BAND,
-        )
+        logger.info("Crash confirmed: severity=%s accel_mag=%.2f m/s²", severity, accel_mag)
         return True, severity, accel_mag
 
     # ──────────────────────────────────────────
-    # HANDLE CRASH
+    # HANDLE CRASH  — unchanged from working version
     # ──────────────────────────────────────────
 
     def handle_crash(self, sensor_data, severity, accel_mag):
@@ -195,16 +164,16 @@ class CrashDetectionUnit:
         )
 
         crash_payload = {
-            "nodeId":    NODE_ID,
-            "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,
-            "type":      "crash",
-            "lat":       gps["latitude"]  if has_gps_fix else None,
-            "lng":       gps["longitude"] if has_gps_fix else None,
-            "severity":  severity.lower(),
+        "nodeId":    NODE_ID,
+        "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
+        "type":      "crash",
+        "lat":       gps["latitude"]  if has_gps_fix else None,
+        "lng":       gps["longitude"] if has_gps_fix else None,
+        "severity":  severity.lower(),           # 'low' / 'medium' / 'high'
         }
 
         logger.info(
-            "Crash payload: nodeId=%s severity=%s lat=%s lng=%s",
+            "Crash payload: node_Id=%s severity=%s lat=%s lng=%s",
             crash_payload["nodeId"], crash_payload["severity"],
             crash_payload["lat"], crash_payload["lng"],
         )
@@ -221,9 +190,6 @@ class CrashDetectionUnit:
             logger.warning("No network → LoRa fallback")
             self.lora_tx.send_payload(crash_payload)
 
-    # ──────────────────────────────────────────
-    # PERIODIC TELEMETRY
-    # ──────────────────────────────────────────
 
     def send_periodic_telemetry(self, sensor_data):
         try:
@@ -241,12 +207,12 @@ class CrashDetectionUnit:
             )
 
             payload = {
-                "nodeId":    NODE_ID,
-                "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,
-                "type":      "telemetry",
-                "lat":       gps["latitude"]  if has_gps_fix else None,
-                "lng":       gps["longitude"] if has_gps_fix else None,
-                "battery":   100,
+            "nodeId":    NODE_ID,
+            "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
+            "type":      "telemetry",
+            "lat":       gps["latitude"]  if has_gps_fix else None,
+            "lng":       gps["longitude"] if has_gps_fix else None,
+            "battery":   100,
             }
 
             if not is_network_available():
@@ -255,7 +221,7 @@ class CrashDetectionUnit:
 
             if self.cloud_client.safe_publish(payload):
                 logger.info(
-                    "Telemetry published: accel_mag=%.2f gps=%s battery=%s",
+                    "Telemetry published: accel_mag=%.2f gps=%s battery=%s status=online",
                     accel_mag,
                     f"{gps['latitude']:.4f},{gps['longitude']:.4f}"
                     if has_gps_fix else "no fix",
@@ -292,9 +258,9 @@ class CrashDetectionUnit:
                 is_crash, severity, accel_mag = self.detect_crash(sensor_data)
 
                 if is_crash:
-                    logger.warning("CRASH DETECTED | Severity: %s | accel_mag=%.2f", severity, accel_mag)
+                    logger.warning("CRASH DETECTED | Severity: %s", severity)
                     self.handle_crash(sensor_data, severity, accel_mag)
-                    time.sleep(5)   # post-crash cooldown — prevents re-trigger on same event
+                    time.sleep(5)   # post-crash cooldown
 
                 if current_time - self.last_telemetry_time >= self.telemetry_interval:
                     self.send_periodic_telemetry(sensor_data)
