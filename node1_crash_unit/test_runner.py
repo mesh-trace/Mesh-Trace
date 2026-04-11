@@ -1,105 +1,75 @@
-"""Standalone MQTT publisher for synthetic telemetry/crash payloads (test topic only)."""
+"""
+test_crash_payload.py
+=====================
+Uses only the project's own config + AWSIoTPublisher to send
+a hardcoded crash payload — no external dependencies beyond
+what main.py already imports.
 
-import logging
-import sys
+Place this file inside the node1_crash_unit/ package folder
+(same level as main.py), then run from the project root:
+
+    python -m node1_crash_unit.test_crash_payload
+
+Requirements: same as main.py (paho-mqtt, python-dotenv)
+"""
+
 import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import logging
 
-# Running as `python test_runner.py` or `import test_runner` leaves __package__ unset (None or "");
-# ensure repo root is on path so `node1_crash_unit.*` imports work like `python -m node1_crash_unit.main`.
-if not __package__:
-    _repo_root = Path(__file__).resolve().parent.parent
-    if str(_repo_root) not in sys.path:
-        sys.path.insert(0, str(_repo_root))
-
-from node1_crash_unit.cloud import mqtt_client as mqtt_client_module
-from node1_crash_unit.cloud.mqtt_client import AWSIoTPublisher
-from node1_crash_unit.config import (
+from .config import (
+    NODE_ID,
     AWS_CA_CERT,
     AWS_DEVICE_CERT,
     AWS_PRIVATE_KEY,
-    NODE_ID,
+    setup_logging,
 )
+from .cloud.mqtt_client import AWSIoTPublisher
 
+# ── Logging ───────────────────────────────────────────────────────────────────
+setup_logging()
 logger = logging.getLogger(__name__)
 
-TEST_MQTT_TOPIC = "mesh-trace/test-runner"
+# ── IST offset in milliseconds (UTC + 5:30) ───────────────────────────────────
+IST_OFFSET_MS = 5 * 3600 * 1000 + 30 * 60 * 1000   # 19800000 ms
 
-IST = timezone(timedelta(hours=5, minutes=30))
-
-
-def get_timestamp() -> str:
-    return datetime.now(IST).isoformat()
-
-
-def build_telemetry():
-    return {
-        "type": "LIVE_TELEMETRY",
-        "node_id": NODE_ID,
-        "timestamp": get_timestamp(),
-        "temperature": {"temperature": 30, "humidity": 60},
-        "accelerometer": {"x": 0.5, "y": 0.2, "z": 9.8},
-        "gyroscope": {"x": 0.0, "y": 0.0, "z": 0.0},
-        "gps": {
-            "latitude": 18.5204,
-            "longitude": 73.8567,
-            "satellites": 10,
-            "fix_quality": 1,
-        },
-    }
+# ── Hardcoded crash payload (exact format from handle_crash in main.py) ───────
+CRASH_PAYLOAD = {
+    "nodeId":    NODE_ID,
+    "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
+    "type":      "crash",
+    "lat":       18.49831,   # Pune coordinates
+    "lng":       73.94994,
+    "severity":  "high",     # 'low' / 'medium' / 'high'
+}
 
 
-def build_crash():
-    return {
-        "alert": "VEHICLE_CRASH_DETECTED",
-        "node_id": NODE_ID,
-        "severity": "HIGH",
-        "acceleration_magnitude": 28.5,
-        "location": {
-            "latitude": 18.5204,
-            "longitude": 73.8567,
-        },
-        "timestamp": get_timestamp(),
-    }
+def main():
+    logger.info("=" * 50)
+    logger.info("  Mesh-Trace | Test Crash Payload Sender")
+    logger.info("=" * 50)
+    logger.info("nodeId    : %s", CRASH_PAYLOAD["nodeId"])
+    logger.info("timestamp : %s", CRASH_PAYLOAD["timestamp"])
+    logger.info("type      : %s", CRASH_PAYLOAD["type"])
+    logger.info("lat/lng   : %s / %s", CRASH_PAYLOAD["lat"], CRASH_PAYLOAD["lng"])
+    logger.info("severity  : %s", CRASH_PAYLOAD["severity"])
+    logger.info("-" * 50)
 
-
-def run():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    logger.info("Test runner starting; MQTT topic overridden to %s", TEST_MQTT_TOPIC)
-    mqtt_client_module.MQTT_TOPIC = TEST_MQTT_TOPIC
-
-    publisher = AWSIoTPublisher(
+    # Connect using the project's own AWSIoTPublisher
+    client = AWSIoTPublisher(
         certs={
-            "ca": AWS_CA_CERT,
+            "ca":   AWS_CA_CERT,
             "cert": AWS_DEVICE_CERT,
-            "key": AWS_PRIVATE_KEY,
+            "key":  AWS_PRIVATE_KEY,
         }
     )
 
-    for i in range(1, 5):
-        payload = build_telemetry()
-        ok = publisher.safe_publish(payload)
-        if ok:
-            logger.info("Telemetry %d/4 published successfully", i)
-        else:
-            logger.warning("Telemetry %d/4 publish failed (continuing)", i)
-        if i < 4:
-            time.sleep(5)
-
-    crash_payload = build_crash()
-    ok = publisher.safe_publish(crash_payload)
-    if ok:
-        logger.info("Crash payload published successfully")
+    # safe_publish = retries + reconnect, same as main.py uses for crashes
+    if client.safe_publish(CRASH_PAYLOAD):
+        logger.info("🚀  Crash payload sent successfully!")
+        logger.info("    Check CloudWatch / DynamoDB / SNS email")
     else:
-        logger.warning("Crash payload publish failed (continuing)")
-
-    logger.info("Test runner finished")
+        logger.error("💥  Failed to send — check logs above")
 
 
 if __name__ == "__main__":
-    run()
+    main()
