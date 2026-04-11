@@ -1,12 +1,21 @@
 """Standalone MQTT publisher for synthetic telemetry/crash payloads (test topic only)."""
 
 import logging
+import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from .cloud import mqtt_client as mqtt_client_module
-from .cloud.mqtt_client import AWSIoTPublisher
-from .config import (
+# Running as `python test_runner.py` or `import test_runner` leaves __package__ unset (None or "");
+# ensure repo root is on path so `node1_crash_unit.*` imports work like `python -m node1_crash_unit.main`.
+if not __package__:
+    _repo_root = Path(__file__).resolve().parent.parent
+    if str(_repo_root) not in sys.path:
+        sys.path.insert(0, str(_repo_root))
+
+from node1_crash_unit.cloud import mqtt_client as mqtt_client_module
+from node1_crash_unit.cloud.mqtt_client import AWSIoTPublisher
+from node1_crash_unit.config import (
     AWS_CA_CERT,
     AWS_DEVICE_CERT,
     AWS_PRIVATE_KEY,
