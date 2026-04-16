@@ -34,12 +34,12 @@ class ImpactSensor:
     """
     
     def __init__(self, pins: Optional[List[int]] = None, pin: Optional[int] = None,
-                 accel_threshold: float = 5.0,  # m/s² — must be well above gravity (9.8 m/s²)
-                 delta_threshold: float = 6.0,   # m/s² — minimum SUDDEN CHANGE vs recent baseline
+                 accel_threshold: float = 15.0,  # m/s² — must be well above gravity (9.8 m/s²)
+                 delta_threshold: float = 8.0,   # m/s² — minimum SUDDEN CHANGE vs recent baseline
                  correlation_window: float = 0.5, # seconds — window to correlate SB420 + accel
                  debounce_time: float = 0.05,     # seconds (50ms debounce)
                  cooldown_time: float = 30.0,     # seconds — no re-trigger for 30s after crash
-                 baseline_window: int = 2):      # samples — rolling window to compute baseline
+                 baseline_window: int = 20):      # samples — rolling window to compute baseline
         """
         Initialize impact sensor system with multiple SB420 sensors
         
