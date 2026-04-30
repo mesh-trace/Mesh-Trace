@@ -6,6 +6,7 @@ from collections import deque
 
 from .config import (
     NODE_ID,
+    NODE_NAME,
     SAMPLE_RATE,
     PRE_CRASH_DURATION,
     AWS_CA_CERT,
@@ -165,6 +166,7 @@ class CrashDetectionUnit:
 
         crash_payload = {
         "nodeId":    NODE_ID,
+        "name": NODE_NAME, 
         "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
         "type":      "crash",
         "lat":       gps["latitude"]  if has_gps_fix else None,
@@ -208,6 +210,7 @@ class CrashDetectionUnit:
 
             payload = {
             "nodeId":    NODE_ID,
+            "name": NODE_NAME, 
             "timestamp": int(time.time() * 1000) + IST_OFFSET_MS,  # UTC + 5:30 in ms
             "type":      "telemetry",
             "lat":       gps["latitude"]  if has_gps_fix else None,
