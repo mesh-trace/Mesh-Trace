@@ -83,6 +83,7 @@ MQTT_QOS = int(os.getenv('MQTT_QOS', '1'))
 # Network Configuration
 MESH_NETWORK_ID = os.getenv('MESH_NETWORK_ID', 'mesh-trace-001')
 NODE_ID = os.getenv('NODE_ID', 'mesh-trace-node-001')
+NODE_NAME = os.getenv('NODE_NAME', NODE_ID)
 
 # Debug Configuration
 DEBUG_MODE = get_bool('DEBUG_MODE', False)
