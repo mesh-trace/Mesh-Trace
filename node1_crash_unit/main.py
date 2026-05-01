@@ -1,3 +1,4 @@
+import random
 import time
 import socket
 import logging
@@ -90,7 +91,12 @@ class CrashDetectionUnit:
         self.last_telemetry_time = time.time()
 
         logger.info("System initialized successfully")
-
+    def _get_battery_level(self) -> int:
+        """Simulate a battery reading for demo mode (power bank as supply).
+        Returns a random int between 60 to 95 so it looks realistic and varies
+        between payloads. Replace with real ADC read when hardware is available.
+        """
+        return random.randint(60, 95)
     # ──────────────────────────────────────────
     # SENSOR READ
     # ──────────────────────────────────────────
@@ -172,6 +178,7 @@ class CrashDetectionUnit:
         "lat":       gps["latitude"]  if has_gps_fix else None,
         "lng":       gps["longitude"] if has_gps_fix else None,
         "severity":  severity.lower(),           # 'low' / 'medium' / 'high'
+        "battery":   self._get_battery_level(),
         }
 
         logger.info(
@@ -215,7 +222,7 @@ class CrashDetectionUnit:
             "type":      "telemetry",
             "lat":       gps["latitude"]  if has_gps_fix else None,
             "lng":       gps["longitude"] if has_gps_fix else None,
-            "battery":   100,
+            "battery":   self._get_battery_level(),
             }
 
             if not is_network_available():
