@@ -62,9 +62,7 @@ dmypy.json
 samconfig.toml
 *.zip
 
-# Logs
-*.log
-logs/
+
 
 # OS
 Thumbs.db
