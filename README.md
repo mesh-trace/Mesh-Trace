@@ -32,7 +32,6 @@ Road accidents remain a leading cause of preventable death, and delayed emergenc
 
 ```
 node1_crash_unit/     # Vehicle-side detection unit
-esp32/                 # Wireless relay firmware
 assets/                 # Diagrams and documentation images
 ```
 
