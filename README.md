@@ -43,4 +43,9 @@ assets/                 # Diagrams and documentation images
 
 ## License
 
+Copyright © 2026 Avdhut Gogawale, Vinaykumar Takankhar, Soham Valunjkar.
 All rights reserved.
+
+This source code is proprietary. Unauthorized copying, modification,
+distribution, or use of this software, via any medium, is strictly
+prohibited without prior written permission from the copyright holders.
