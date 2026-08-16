@@ -20,7 +20,7 @@ Road accidents remain a leading cause of preventable death, and delayed emergenc
 - Local blackbox logging, independent of network availability
 - GPS-tagged, severity-classified crash alerts
 
-## How It Works (High Level)
+## How It Works 
 
 1. **Monitoring** — An onboard unit continuously reads motion, vibration, GPS, and environmental sensors.
 2. **Detection** — A dual-condition sensor fusion approach confirms a genuine crash (rather than a bump or false trigger) and classifies its severity.
