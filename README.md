@@ -1,4 +1,4 @@
-# MESH-TRACE
+# MESHTRACE
 
 **A low-cost IoT vehicle crash detection and emergency alert system with LoRa mesh fallback for low-connectivity zones.**
 
